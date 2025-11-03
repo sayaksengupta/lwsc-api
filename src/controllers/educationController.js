@@ -4,7 +4,7 @@ const { getPagination } = require('../utils/pagination');
 const { seedInternalArticles, fetchRssArticles } = require('../services/rssService');
 
 const listArticles = async (req, res) => {
-  const { source, query, page, pageSize } = req.query;
+  const { source, query, page=1, pageSize } = req.query;
   const { skip, limit } = getPagination(page, pageSize);
 
   // Ensure data
