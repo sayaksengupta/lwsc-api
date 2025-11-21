@@ -9,6 +9,7 @@ const shareRoutes = require('./routes/share');
 const painRoutes = require('./routes/pain');
 const calendarRoutes = require('./routes/calendar');
 const hydrationRoutes = require('./routes/hydration');
+const medicationRoutes = require('./routes/medications');
 const moodRoutes = require('./routes/mood');
 const analyticsRoutes = require('./routes/analytics');
 const rewardsRoutes = require('./routes/rewards');
@@ -50,7 +51,7 @@ app.use('/api/v1/emergency', emergencyRoutes);
 app.use('/api/v1/facilities', facilitiesRoutes);
 app.use('/api/v1/settings', settingsRoutes);
 app.use('/api/v1/home', homeRoutes);
-// ... mount all
+app.use('/api/v1/medications', medicationRoutes);
 
 app.use(errorHandler);
 
