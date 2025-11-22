@@ -1,5 +1,6 @@
 const MedicationSchedule = require('../models/MedicationSchedule');
 const MedicationIntake = require('../models/MedicationIntake');
+const { awardLogCoins } = require('../services/coinService');
 
 const listSchedules = async (req, res) => {
   const schedules = await MedicationSchedule.find({ userId: req.user._id }).lean();
@@ -42,6 +43,7 @@ const listIntakes = async (req, res) => {
 
 const createIntake = async (req, res) => {
   const intake = await MedicationIntake.create({ ...req.body, userId: req.user._id });
+  await awardLogCoins(req.user._id, 'medication');
   res.status(201).json(intake);
 };
 

@@ -1,5 +1,6 @@
 const PainLog = require('../models/PainLog');
 const { getPagination } = require('../utils/pagination');
+const { awardLogCoins } = require('../services/coinService');
 
 const list = async (req, res) => {
   const { from, to, location, type, page, pageSize } = req.query;
@@ -31,6 +32,7 @@ const create = async (req, res) => {
     ...req.body,
     userId: req.user._id
   });
+  await awardLogCoins(req.user._id, 'pain');
   res.status(201).json(log);
 };
 

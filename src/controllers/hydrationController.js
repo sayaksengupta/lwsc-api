@@ -1,6 +1,7 @@
 const HydrationLog = require('../models/HydrationLog');
 const User = require('../models/User');
 const { getPagination } = require('../utils/pagination');
+const { awardLogCoins } = require('../services/coinService');
 
 const getSummary = async (req, res) => {
   const { date } = req.query;
@@ -85,7 +86,7 @@ const createLog = async (req, res) => {
     quantity,
     note
   });
-
+  await awardLogCoins(req.user._id, 'hydration');
   res.status(201).json(log);
 };
 
