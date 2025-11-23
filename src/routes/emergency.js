@@ -1,11 +1,16 @@
-const router = require('express').Router();
-const { auth } = require('../middleware/auth');
-const { validate } = require('../middleware/validate');
+const router = require("express").Router();
+const { auth } = require("../middleware/auth");
+const { validate } = require("../middleware/validate");
+
 const {
   createContactSchema,
   updateContactSchema,
-  updateSettingsSchema
-} = require('../validators/emergencyValidator');
+  updateSettingsSchema,
+  setEmergencySecuritySchema,
+  verifyPinSchema,
+  triggerAlertSchema,
+} = require("../validators/emergencyValidator");
+
 const {
   listContacts,
   createContact,
@@ -13,17 +18,53 @@ const {
   deleteContact,
   getSettings,
   updateSettings,
-  triggerAlert
-} = require('../controllers/emergencyController');
+  setEmergencySecurity,
+  verifyEmergencyPin,
+  triggerAlert,
+} = require("../controllers/emergencyController");
+const User = require("../models/User");
 
-router.get('/contacts', auth, listContacts);
-router.post('/contacts', auth, validate(createContactSchema), createContact);
-router.patch('/contacts/:id', auth, validate(updateContactSchema), updateContact);
-router.delete('/contacts/:id', auth, deleteContact);
+// ── Contacts
+router.get("/contacts", auth, listContacts);
+router.post("/contacts", auth, validate(createContactSchema), createContact);
+router.patch(
+  "/contacts/:id",
+  auth,
+  validate(updateContactSchema),
+  updateContact
+);
+router.delete("/contacts/:id", auth, deleteContact);
 
-router.get('/settings', auth, getSettings);
-router.patch('/settings', auth, validate(updateSettingsSchema), updateSettings);
+// ── General Settings
+router.get("/settings", auth, getSettings);
+router.patch("/settings", auth, validate(updateSettingsSchema), updateSettings);
 
-router.post('/alert', auth, triggerAlert);
+// ── Emergency Security (PIN + Message)
+router.post(
+  "/security",
+  auth,
+  async (req, res, next) => {
+    const user = await User.findById(req.user._id).select(
+      "emergencySettings.emergencyPin"
+    );
+    const isFirstTime = !user.emergencySettings.emergencyPin;
+
+    // Pass context to Joi
+    req.joiContext = { isFirstTime };
+    next();
+  },
+  validate(setEmergencySecuritySchema),
+  setEmergencySecurity
+);
+
+router.post(
+  "/security/verify",
+  auth,
+  validate(verifyPinSchema),
+  verifyEmergencyPin
+);
+
+// ── Trigger Alert (Anytime, PIN Required)
+router.post("/alert", auth, validate(triggerAlertSchema), triggerAlert);
 
 module.exports = router;

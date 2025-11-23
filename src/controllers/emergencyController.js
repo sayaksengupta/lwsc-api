@@ -1,8 +1,9 @@
-const EmergencyContact = require('../models/EmergencyContact');
-const User = require('../models/User');
-const PainLog = require('../models/PainLog');
-const { sendEmergencySMS } = require('../services/smsService');
+const bcrypt = require("bcryptjs");
+const EmergencyContact = require("../models/EmergencyContact");
+const User = require("../models/User");
+const { sendEmergencySMS } = require("../services/smsService");
 
+// ── Contacts ─────────────────────────────────────────────────────
 const listContacts = async (req, res) => {
   const contacts = await EmergencyContact.find({ userId: req.user._id })
     .sort({ priority: 1, createdAt: 1 })
@@ -11,11 +12,21 @@ const listContacts = async (req, res) => {
 };
 
 const createContact = async (req, res) => {
-  const { name, phone, relationship, priority } = req.body;
+  const { name, phone, relationship, priority = 1 } = req.body;
 
-  const existing = await EmergencyContact.findOne({ userId: req.user._id, phone });
+  const existing = await EmergencyContact.findOne({
+    userId: req.user._id,
+    phone,
+  });
   if (existing) {
-    return res.status(400).json({ error: { code: 'PHONE_EXISTS' } });
+    return res
+      .status(400)
+      .json({
+        error: {
+          code: "PHONE_EXISTS",
+          message: "Contact with this phone already exists",
+        },
+      });
   }
 
   const contact = await EmergencyContact.create({
@@ -23,7 +34,7 @@ const createContact = async (req, res) => {
     name,
     phone,
     relationship,
-    priority
+    priority,
   });
 
   res.status(201).json(contact);
@@ -40,7 +51,9 @@ const updateContact = async (req, res) => {
   );
 
   if (!contact) {
-    return res.status(404).json({ error: { code: 'NOT_FOUND' } });
+    return res
+      .status(404)
+      .json({ error: { code: "NOT_FOUND", message: "Contact not found" } });
   }
 
   res.json(contact);
@@ -48,62 +61,192 @@ const updateContact = async (req, res) => {
 
 const deleteContact = async (req, res) => {
   const { id } = req.params;
-  const result = await EmergencyContact.deleteOne({ _id: id, userId: req.user._id });
+  const result = await EmergencyContact.deleteOne({
+    _id: id,
+    userId: req.user._id,
+  });
 
   if (result.deletedCount === 0) {
-    return res.status(404).json({ error: { code: 'NOT_FOUND' } });
+    return res.status(404).json({ error: { code: "NOT_FOUND" } });
   }
 
-  res.json({ success: true });
+  res.json({ success: true, message: "Contact deleted" });
 };
 
+// ── Settings ─────────────────────────────────────────────────────
 const getSettings = async (req, res) => {
-  const user = await User.findById(req.user._id).select('emergencySettings');
-  res.json(user.emergencySettings);
+  const user = await User.findById(req.user._id)
+    .select(
+      "emergencySettings.autoAlert emergencySettings.triggerThreshold emergencySettings.emergencyMessage"
+    )
+    .lean();
+
+  res.json({
+    autoAlert: user.emergencySettings.autoAlert,
+    triggerThreshold: user.emergencySettings.triggerThreshold,
+    emergencyMessage: user.emergencySettings.emergencyMessage,
+    hasPinSet: !!user.emergencySettings.emergencyPin,
+  });
 };
 
 const updateSettings = async (req, res) => {
-  const updates = req.body;
+  const { autoAlert, triggerThreshold } = req.body;
+
   const user = await User.findByIdAndUpdate(
     req.user._id,
-    { $set: { 'emergencySettings': updates } },
+    {
+      $set: {
+        "emergencySettings.autoAlert": autoAlert,
+        "emergencySettings.triggerThreshold": triggerThreshold,
+      },
+    },
     { new: true, runValidators: true }
-  ).select('emergencySettings');
+  ).select("emergencySettings.autoAlert emergencySettings.triggerThreshold");
 
-  res.json(user.emergencySettings);
+  res.json({
+    autoAlert: user.emergencySettings.autoAlert,
+    triggerThreshold: user.emergencySettings.triggerThreshold,
+  });
 };
 
-const triggerAlert = async (req, res) => {
-  const { painLogId, message: customMessage } = req.body;
+// ── Emergency Security (PIN + Message) ───────────────────────────
+const setEmergencySecurity = async (req, res) => {
+  const { currentPin, newPin, emergencyMessage } = req.body;
   const userId = req.user._id;
 
-  // Validate pain log
-  const painLog = await PainLog.findOne({ _id: painLogId, userId });
-  if (!painLog) {
-    return res.status(404).json({ error: { code: 'PAIN_LOG_NOT_FOUND' } });
+  const user = await User.findById(userId).select(
+    "+emergencySettings.emergencyPin"
+  );
+
+  // First time setting PIN?
+  const isFirstTime = !user.emergencySettings.emergencyPin;
+
+  if (!isFirstTime) {
+    // Verify current PIN
+    const isCurrentPinValid = await bcrypt.compare(
+      currentPin,
+      user.emergencySettings.emergencyPin
+    );
+    if (!isCurrentPinValid) {
+      return res.status(401).json({
+        error: {
+          code: "INVALID_CURRENT_PIN",
+          message: "Current PIN is incorrect",
+        },
+      });
+    }
   }
 
-  const user = await User.findById(userId).select('firstName lastName emergencySettings');
-  const contacts = await EmergencyContact.find({ userId }).sort({ priority: 1 });
+  // Update message + new PIN (will be hashed by pre-save hook)
+  await User.findByIdAndUpdate(userId, {
+    $set: {
+      "emergencySettings.emergencyMessage": emergencyMessage,
+      "emergencySettings.emergencyPin": newPin, // pre-save hashes it
+    },
+  });
 
+  res.json({
+    success: true,
+    message: isFirstTime
+      ? "Emergency PIN and message set successfully"
+      : "Emergency PIN and message updated successfully",
+  });
+};
+
+const verifyEmergencyPin = async (req, res) => {
+  const { emergencyPin } = req.body;
+  const user = await User.findById(req.user._id).select(
+    "+emergencySettings.emergencyPin"
+  );
+
+  if (!user.emergencySettings.emergencyPin) {
+    return res
+      .status(400)
+      .json({
+        error: { code: "NO_PIN_SET", message: "Emergency PIN not set" },
+      });
+  }
+
+  const isValid = await bcrypt.compare(
+    emergencyPin,
+    user.emergencySettings.emergencyPin
+  );
+  res.json({ success: true, verified: isValid });
+};
+
+// ── Trigger Alert (Anytime, PIN Required) ────────────────────────
+const triggerAlert = async (req, res) => {
+  const { emergencyPin, message } = req.body;
+  const userId = req.user._id;
+
+  // 1. Validate PIN
+  const user = await User.findById(userId)
+    .select(
+      "+emergencySettings.emergencyPin emergencySettings.emergencyMessage firstName lastName phone"
+    )
+    .lean();
+
+  if (!user.emergencySettings.emergencyPin) {
+    return res
+      .status(400)
+      .json({
+        error: { code: "NO_PIN_SET", message: "Set your emergency PIN first" },
+      });
+  }
+
+  const pinValid = await bcrypt.compare(
+    emergencyPin,
+    user.emergencySettings.emergencyPin
+  );
+  if (!pinValid) {
+    return res
+      .status(401)
+      .json({ error: { code: "INVALID_PIN", message: "Incorrect PIN" } });
+  }
+
+  // 2. Get contacts
+  const contacts = await EmergencyContact.find({ userId }).sort({
+    priority: 1,
+  });
   if (contacts.length === 0) {
-    return res.status(400).json({ error: { code: 'NO_CONTACTS' } });
+    return res
+      .status(400)
+      .json({
+        error: { code: "NO_CONTACTS", message: "No emergency contacts added" },
+      });
   }
 
-  const message = customMessage || user.emergencySettings.alertMessage;
+  // 3. Final message
+  const finalMessage =
+    message?.trim() || user.emergencySettings.emergencyMessage;
   const fullName = `${user.firstName} ${user.lastName}`;
 
+  // 4. Send SMS
   const results = [];
   for (const contact of contacts) {
-    const result = await sendEmergencySMS(contact.phone, message, fullName);
+    const smsResult = await sendEmergencySMS(
+      contact.phone,
+      finalMessage,
+      fullName
+    );
     results.push({
       contactId: contact._id,
+      name: contact.name,
       phone: contact.phone,
-      status: result.success ? 'SENT' : 'FAILED'
+      status: smsResult.success ? "SENT" : "FAILED",
+      error: smsResult.error || null,
     });
   }
 
-  res.json({ alertId: painLogId, results });
+  res.json({
+    success: true,
+    message: "Emergency alert sent successfully",
+    timestamp: new Date().toISOString(),
+    messageUsed: finalMessage,
+    sentTo: results.filter((r) => r.status === "SENT").length,
+    totalContacts: contacts.length,
+    results,
+  });
 };
 
 module.exports = {
@@ -113,5 +256,7 @@ module.exports = {
   deleteContact,
   getSettings,
   updateSettings,
-  triggerAlert
+  setEmergencySecurity,
+  verifyEmergencyPin,
+  triggerAlert,
 };
