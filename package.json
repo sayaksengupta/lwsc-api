@@ -15,7 +15,8 @@
     "joi": "^17.9.2",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^7.5.0",
-    "morgan": "^1.10.0"
+    "morgan": "^1.10.0",
+    "multer": "^2.0.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"

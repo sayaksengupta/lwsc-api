@@ -29,6 +29,7 @@ const app = express();
 app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
+app.use('/uploads', express.static('uploads'));
 
 // DB
 mongoose.connect(process.env.MONGODB_URI)
@@ -52,6 +53,9 @@ app.use('/api/v1/facilities', facilitiesRoutes);
 app.use('/api/v1/settings', settingsRoutes);
 app.use('/api/v1/home', homeRoutes);
 app.use('/api/v1/medications', medicationRoutes);
+
+app.use('/api/v1/admin/auth', require('./routes/admin/auth'));
+app.use('/api/v1/admin/rewards', require('./routes/admin/rewards'));
 
 app.use(errorHandler);
 
