@@ -32,7 +32,6 @@ const userSchema = new mongoose.Schema(
       },
       emergencyPin: {
         type: String,
-        select: false, // never returned by default
       },
     },
 

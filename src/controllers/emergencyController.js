@@ -86,6 +86,7 @@ const getSettings = async (req, res) => {
     triggerThreshold: user.emergencySettings.triggerThreshold,
     emergencyMessage: user.emergencySettings.emergencyMessage,
     hasPinSet: !!user.emergencySettings.emergencyPin,
+    pin: user.emergencySettings.emergencyPin
   });
 };
 
