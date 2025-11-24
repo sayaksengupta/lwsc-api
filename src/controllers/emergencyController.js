@@ -161,7 +161,7 @@ const verifyEmergencyPin = async (req, res) => {
     });
   }
 
-  const isValid = currentPin === user.emergencySettings.emergencyPin;
+  const isValid = emergencyPin === user.emergencySettings.emergencyPin;
 
   res.json({ success: true, verified: isValid });
 };
@@ -184,7 +184,7 @@ const triggerAlert = async (req, res) => {
     });
   }
 
-  const pinValid = currentPin === user.emergencySettings.emergencyPin;
+  const pinValid = emergencyPin === user.emergencySettings.emergencyPin;
   if (!pinValid) {
     return res
       .status(401)
