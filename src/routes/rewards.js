@@ -10,7 +10,8 @@ const {
   getMyAchievements,
   getAvailableBadges,
   redeemBadge,
-  getMyBadges
+  getMyBadges,
+  getLeaderboard
 } = require('../controllers/rewardsController');
 
 router.get('/coins/balance', auth, getBalance);
@@ -21,5 +22,6 @@ router.get('/achievements', auth, getMyAchievements);
 router.get('/badges/available', auth, getAvailableBadges);
 router.post('/badges/:id/redeem', auth, redeemBadge);
 router.get('/badges/my', auth, getMyBadges);
+router.get('/leaderboard', auth, getLeaderboard);
 
 module.exports = router;
