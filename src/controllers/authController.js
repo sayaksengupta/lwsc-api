@@ -6,6 +6,7 @@ const {
   generateResetToken
 } = require('../utils/token');
 const { sendPasswordResetEmail } = require('../utils/email');
+const jwt = require('jsonwebtoken');
 
 const formatUser = (user) => ({
   id: user._id.toString(),
