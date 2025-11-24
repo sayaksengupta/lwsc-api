@@ -106,12 +106,10 @@ const redeemBadge = async (req, res) => {
 
 const getLeaderboard = async (req, res) => {
   const currentUserId = req.user._id;
-  const limit = parseInt(req.query.limit) || 50;
-  const page = parseInt(req.query.page) || 1;
-  const skip = (page - 1) * limit;
+  const limit = Math.min(parseInt(req.query.limit) || 50, 100); // max 100 for safety
 
   try {
-    // 1. Get current user's coins + name
+    // 1. Get current user
     const currentUser = await User.findById(currentUserId)
       .select('firstName lastName coins')
       .lean();
@@ -120,72 +118,60 @@ const getLeaderboard = async (req, res) => {
       return res.status(404).json({ error: { code: 'USER_NOT_FOUND' } });
     }
 
-    const myEntry = {
-      userId: currentUserId.toString(),
-      name: `${currentUser.firstName} ${currentUser.lastName}`.trim() || 'Me',
-      coins: currentUser.coins || 0,
-      isMe: true,
-      rank: null // will be calculated later
-    };
-
-    // 2. Get all verified connections
+    // 2. Get verified connections' phones
     const connections = await Connection.find({
       userId: currentUserId,
       isVerified: true
     }).select('phone').lean();
 
-    const connectionUserIds = connections
-      .map(c => c.phone)
-      .filter(Boolean);
+    const connectionPhones = connections.map(c => c.phone).filter(Boolean);
 
-    // 3. Find users who match these phone numbers + current user
+    // 3. Fetch all relevant users (me + connections)
     const users = await User.find({
       $or: [
         { _id: currentUserId },
-        { phone: { $in: connectionUserIds } }
+        { phone: { $in: connectionPhones } }
       ]
-    })
-      .select('firstName lastName phone coins')
-      .lean();
+    }).select('firstName lastName coins').lean();
 
-    // 4. Build leaderboard entries
-    const leaderboard = users.map(user => {
-      const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Anonymous';
-      const isMe = user._id.toString() === currentUserId.toString();
+    // 4. Build & sort leaderboard
+    const leaderboard = users
+      .map(user => {
+        const name = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Anonymous';
+        const isMe = user._id.toString() === currentUserId.toString();
 
-      return {
-        userId: user._id.toString(),
-        name: isMe ? `${fullName} (You)` : fullName,
-        coins: user.coins || 0,
-        isMe,
-        isConnection: !isMe
-      };
-    });
+        return {
+          userId: user._id.toString(),
+          name: isMe ? `${name} (You)` : name,
+          coins: user.coins || 0,
+          isMe
+        };
+      })
+      .sort((a, b) => b.coins - a.coins);
 
-    // 5. Sort by coins descending
-    leaderboard.sort((a, b) => b.coins - a.coins);
-
-    // 6. Add ranks
+    // 5. Assign ranks
     leaderboard.forEach((entry, index) => {
       entry.rank = index + 1;
     });
 
-    // 7. Find my rank
-    const myRank = leaderboard.find(e => e.isMe)?.rank || null;
+    // 6. My rank & coins
+    const myEntry = leaderboard.find(e => e.isMe);
+    const myRank = myEntry?.rank || null;
+    const myCoins = myEntry?.coins || 0;
 
-    // 8. Apply pagination (optional — you can remove if you want top N only)
-    const paginated = leaderboard.slice(0, limit);
+    // 7. Apply limit (top N only — no pagination needed for small list)
+    const topN = leaderboard.slice(0, limit);
 
     res.json({
       success: true,
       myRank,
-      myCoins: myEntry.coins,
+      myCoins,
       totalParticipants: leaderboard.length,
-      leaderboard: paginated.map(entry => ({
-        rank: entry.rank,
-        name: entry.name,
-        coins: entry.coins,
-        isMe: entry.isMe
+      leaderboard: topN.map(({ rank, name, coins, isMe }) => ({
+        rank,
+        name,
+        coins,
+        isMe
       }))
     });
 
