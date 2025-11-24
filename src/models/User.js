@@ -12,7 +12,7 @@ const userSchema = new mongoose.Schema(
     password: { type: String, required: true },
     firstName: { type: String, required: true },
     lastName: { type: String, required: true },
-    phone: { type: String, default: null },
+    phone: { type: String, unique: true, default: null },
     avatarUrl: { type: String, default: null },
     refreshToken: { type: String, default: null },
     hydrationGoalOz: { type: Number, default: 64 },
@@ -57,6 +57,7 @@ const userSchema = new mongoose.Schema(
 
 // Indexes
 userSchema.index({ email: 1 });
+userSchema.index({ phone: 1 });
 userSchema.index({ resetPasswordToken: 1 });
 
 // userSchema.pre("save", async function (next) {
