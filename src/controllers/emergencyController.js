@@ -1,4 +1,3 @@
-const bcrypt = require("bcryptjs");
 const EmergencyContact = require("../models/EmergencyContact");
 const User = require("../models/User");
 const { sendEmergencySMS } = require("../services/smsService");
@@ -19,14 +18,12 @@ const createContact = async (req, res) => {
     phone,
   });
   if (existing) {
-    return res
-      .status(400)
-      .json({
-        error: {
-          code: "PHONE_EXISTS",
-          message: "Contact with this phone already exists",
-        },
-      });
+    return res.status(400).json({
+      error: {
+        code: "PHONE_EXISTS",
+        message: "Contact with this phone already exists",
+      },
+    });
   }
 
   const contact = await EmergencyContact.create({
@@ -86,7 +83,7 @@ const getSettings = async (req, res) => {
     triggerThreshold: user.emergencySettings.triggerThreshold,
     emergencyMessage: user.emergencySettings.emergencyMessage,
     hasPinSet: !!user.emergencySettings.emergencyPin,
-    pin: user.emergencySettings.emergencyPin
+    pin: user.emergencySettings.emergencyPin,
   });
 };
 
@@ -124,10 +121,8 @@ const setEmergencySecurity = async (req, res) => {
 
   if (!isFirstTime) {
     // Verify current PIN
-    const isCurrentPinValid = await bcrypt.compare(
-      currentPin,
-      user.emergencySettings.emergencyPin
-    );
+    const isCurrentPinValid =
+      currentPin === user.emergencySettings.emergencyPin;
     if (!isCurrentPinValid) {
       return res.status(401).json({
         error: {
@@ -161,17 +156,13 @@ const verifyEmergencyPin = async (req, res) => {
   );
 
   if (!user.emergencySettings.emergencyPin) {
-    return res
-      .status(400)
-      .json({
-        error: { code: "NO_PIN_SET", message: "Emergency PIN not set" },
-      });
+    return res.status(400).json({
+      error: { code: "NO_PIN_SET", message: "Emergency PIN not set" },
+    });
   }
 
-  const isValid = await bcrypt.compare(
-    emergencyPin,
-    user.emergencySettings.emergencyPin
-  );
+  const isValid = currentPin === user.emergencySettings.emergencyPin;
+
   res.json({ success: true, verified: isValid });
 };
 
@@ -188,17 +179,12 @@ const triggerAlert = async (req, res) => {
     .lean();
 
   if (!user.emergencySettings.emergencyPin) {
-    return res
-      .status(400)
-      .json({
-        error: { code: "NO_PIN_SET", message: "Set your emergency PIN first" },
-      });
+    return res.status(400).json({
+      error: { code: "NO_PIN_SET", message: "Set your emergency PIN first" },
+    });
   }
 
-  const pinValid = await bcrypt.compare(
-    emergencyPin,
-    user.emergencySettings.emergencyPin
-  );
+  const pinValid = currentPin === user.emergencySettings.emergencyPin;
   if (!pinValid) {
     return res
       .status(401)
@@ -210,11 +196,9 @@ const triggerAlert = async (req, res) => {
     priority: 1,
   });
   if (contacts.length === 0) {
-    return res
-      .status(400)
-      .json({
-        error: { code: "NO_CONTACTS", message: "No emergency contacts added" },
-      });
+    return res.status(400).json({
+      error: { code: "NO_CONTACTS", message: "No emergency contacts added" },
+    });
   }
 
   // 3. Final message
