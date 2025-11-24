@@ -95,22 +95,12 @@ const updateSchema = Joi.object({
  * CREATE MEDICATION INTAKE
  */
 const intakeCreateSchema = Joi.object({
-  dateTime: Joi.date()
-    .iso()
-    .required()
-    .messages({
-      "date.base": "dateTime is required and must be valid ISO datetime",
-    }),
-
-  label: Joi.string()
-    .valid("Morning", "Afternoon", "Evening", "BedTime", "Custom")
-    .required(),
-
-  status: Joi.string().valid("Taken", "Late", "Skipped").required(),
-
-  notes: Joi.string().max(300).allow(null, "").optional(),
-}).options({ stripUnknown: true });
-
+  dateTime: Joi.date().required(),
+  label: Joi.string().valid('Morning', 'Afternoon', 'Evening', 'BedTime', 'Custom').required(),
+  status: Joi.string().valid('Taken', 'Late', 'Skipped').required(),
+  notes: Joi.string().allow('').optional()
+  // NO scheduleId here — it comes from URL param
+});
 /**
  * QUERY PARAMS: from/to dates
  */
