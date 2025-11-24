@@ -59,17 +59,17 @@ const userSchema = new mongoose.Schema(
 userSchema.index({ email: 1 });
 userSchema.index({ resetPasswordToken: 1 });
 
-userSchema.pre("save", async function (next) {
-  if (
-    this.isModified("emergencySettings.emergencyPin") &&
-    this.emergencySettings.emergencyPin
-  ) {
-    this.emergencySettings.emergencyPin = await bcrypt.hash(
-      this.emergencySettings.emergencyPin,
-      12
-    );
-  }
-  next();
-});
+// userSchema.pre("save", async function (next) {
+//   if (
+//     this.isModified("emergencySettings.emergencyPin") &&
+//     this.emergencySettings.emergencyPin
+//   ) {
+//     this.emergencySettings.emergencyPin = await bcrypt.hash(
+//       this.emergencySettings.emergencyPin,
+//       12
+//     );
+//   }
+//   next();
+// });
 
 module.exports = mongoose.model("User", userSchema);

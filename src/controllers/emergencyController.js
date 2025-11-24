@@ -137,7 +137,7 @@ const setEmergencySecurity = async (req, res) => {
   await User.findByIdAndUpdate(userId, {
     $set: {
       "emergencySettings.emergencyMessage": emergencyMessage,
-      "emergencySettings.emergencyPin": newPin, // pre-save hashes it
+      "emergencySettings.emergencyPin": newPin, 
     },
   });
 
