@@ -8,6 +8,9 @@ const coinTransactionSchema = new mongoose.Schema({
   date: { type: Date, default: Date.now, index: true }
 }, { timestamps: true });
 
-coinTransactionSchema.index({ userId: 1, date: -1 });
+coinTransactionSchema.index(
+  { userId: 1, reason: 1, date: -1 },
+  { unique: true } 
+);
 
 module.exports = mongoose.model('CoinTransaction', coinTransactionSchema);
