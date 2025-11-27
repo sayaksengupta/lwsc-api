@@ -9,7 +9,8 @@ const {
   createBadge,
   listBadges,
   updateBadge,
-  deleteBadge
+  deleteBadge,
+  updateAchievement
 } = require('../../controllers/admin/rewardsController');
 
 // ACHIEVEMENTS
@@ -20,6 +21,7 @@ router.post('/achievements',
 );
 
 router.get('/achievements', adminAuth, listAchievements);
+router.patch('/:id', upload.single('icon'), updateAchievement);
 
 // BADGES
 router.post('/badges', 

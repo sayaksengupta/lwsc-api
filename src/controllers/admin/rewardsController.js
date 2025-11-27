@@ -1,21 +1,25 @@
-const Achievement = require('../../models/Achievement');
-const Badge = require('../../models/Badge');
-const fs = require('fs');
-const path = require('path');
+const Achievement = require("../../models/Achievement");
+const Badge = require("../../models/Badge");
+const fs = require("fs");
+const path = require("path");
 
 const createAchievement = async (req, res) => {
   const { title, description } = req.body;
 
   if (!req.file) {
-    return res.status(400).json({ error: { code: 'ICON_REQUIRED', message: 'Icon image is required' } });
+    return res
+      .status(400)
+      .json({
+        error: { code: "ICON_REQUIRED", message: "Icon image is required" },
+      });
   }
 
-  const icon = `/${req.file.path.replace(/\\/g, '/')}`; // normalize: uploads/achievements/xxx.png
+  const icon = `/${req.file.path.replace(/\\/g, "/")}`; // normalize: uploads/achievements/xxx.png
 
   try {
     const achievement = await Achievement.create({
       title: title.trim(),
-      description: description?.trim() || '',
+      description: description?.trim() || "",
       icon,
     });
 
@@ -24,6 +28,60 @@ const createAchievement = async (req, res) => {
     // Clean up uploaded file on error
     fs.unlink(req.file.path, () => {});
     throw err;
+  }
+};
+
+const updateAchievement = async (req, res) => {
+  const achievementId = req.params.id;
+  const { title, description, isActive } = req.body;
+
+  // Build update object
+  const updateData = {};
+  if (title !== undefined) updateData.title = title.trim();
+  if (description !== undefined)
+    updateData.description = description?.trim() || "";
+  if (isActive !== undefined)
+    updateData.isActive = isActive === true || isActive === "true";
+
+  // Handle new icon upload
+  if (req.file) {
+    updateData.icon = `/${req.file.path.replace(/\\/g, "/")}`;
+  }
+
+  try {
+    const achievement = await Achievement.findByIdAndUpdate(
+      achievementId,
+      updateData,
+      { new: true, runValidators: true }
+    );
+
+    if (!achievement) {
+      // Clean up uploaded file if achievement not found
+      if (req.file) fs.unlink(req.file.path, () => {});
+      return res.status(404).json({ error: { code: "ACHIEVEMENT_NOT_FOUND" } });
+    }
+
+    // Delete old icon if a new one was uploaded
+    if (req.file && req.body.oldIcon) {
+      const oldIconPath = req.body.oldIcon.startsWith("/")
+        ? req.body.oldIcon.slice(1)
+        : req.body.oldIcon;
+
+      const fullPath = path.join(__dirname, "..", "..", oldIconPath);
+
+      fs.unlink(fullPath, (err) => {
+        if (err && err.code !== "ENOENT") {
+          console.error("Failed to delete old achievement icon:", err);
+        }
+      });
+    }
+
+    res.json(achievement);
+  } catch (err) {
+    // Clean up on any error
+    if (req.file) fs.unlink(req.file.path, () => {});
+    console.error("updateAchievement error:", err);
+    res.status(500).json({ error: { code: "SERVER_ERROR" } });
   }
 };
 
@@ -39,19 +97,30 @@ const createBadge = async (req, res) => {
   const { title, description, coinCost } = req.body;
 
   if (!req.file) {
-    return res.status(400).json({ error: { code: 'ICON_REQUIRED', message: 'Icon image is required' } });
+    return res
+      .status(400)
+      .json({
+        error: { code: "ICON_REQUIRED", message: "Icon image is required" },
+      });
   }
 
   if (!coinCost || isNaN(coinCost) || coinCost < 1) {
-    return res.status(400).json({ error: { code: 'INVALID_COIN_COST', message: 'Valid coinCost is required' } });
+    return res
+      .status(400)
+      .json({
+        error: {
+          code: "INVALID_COIN_COST",
+          message: "Valid coinCost is required",
+        },
+      });
   }
 
-  const icon = `/${req.file.path.replace(/\\/g, '/')}`;
+  const icon = `/${req.file.path.replace(/\\/g, "/")}`;
 
   try {
     const badge = await Badge.create({
       title: title.trim(),
-      description: description?.trim() || '',
+      description: description?.trim() || "",
       coinCost: Number(coinCost),
       icon,
     });
@@ -82,22 +151,30 @@ const updateBadge = async (req, res) => {
 
   // If new icon uploaded
   if (req.file) {
-    updateData.icon = `/${req.file.path.replace(/\\/g, '/')}`;
+    updateData.icon = `/${req.file.path.replace(/\\/g, "/")}`;
   }
 
-  const badge = await Badge.findByIdAndUpdate(badgeId, updateData, { new: true });
+  const badge = await Badge.findByIdAndUpdate(badgeId, updateData, {
+    new: true,
+  });
 
   if (!badge) {
     // Delete uploaded file if badge not found
     if (req.file) fs.unlink(req.file.path, () => {});
-    return res.status(404).json({ error: { code: 'BADGE_NOT_FOUND' } });
+    return res.status(404).json({ error: { code: "BADGE_NOT_FOUND" } });
   }
 
   // Delete old icon if replaced
   if (req.file && badge.icon) {
-    const oldPath = path.join(__dirname, '..', '..', badge.icon.replace('/', ''));
+    const oldPath = path.join(
+      __dirname,
+      "..",
+      "..",
+      badge.icon.replace("/", "")
+    );
     fs.unlink(oldPath, (err) => {
-      if (err && err.code !== 'ENOENT') console.error('Failed to delete old icon:', err);
+      if (err && err.code !== "ENOENT")
+        console.error("Failed to delete old icon:", err);
     });
   }
 
@@ -112,17 +189,18 @@ const deleteBadge = async (req, res) => {
   );
 
   if (!badge) {
-    return res.status(404).json({ error: { code: 'BADGE_NOT_FOUND' } });
+    return res.status(404).json({ error: { code: "BADGE_NOT_FOUND" } });
   }
 
-  res.json({ success: true, message: 'Badge deactivated' });
+  res.json({ success: true, message: "Badge deactivated" });
 };
 
 module.exports = {
   createAchievement,
+  updateAchievement,
   listAchievements,
   createBadge,
   listBadges,
   updateBadge,
-  deleteBadge
+  deleteBadge,
 };
