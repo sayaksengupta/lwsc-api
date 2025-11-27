@@ -1,6 +1,7 @@
 const MoodLog = require('../models/MoodLog');
 const { getPagination } = require('../utils/pagination');
 const { awardLogCoins } = require('../services/coinService');
+const { checkAndAwardAchievements } = require('../services/achievementService');
 
 const list = async (req, res) => {
   const { from, to, page, pageSize } = req.query;
@@ -20,7 +21,15 @@ const list = async (req, res) => {
 const create = async (req, res) => {
   const log = await MoodLog.create({ ...req.body, userId: req.user._id });
   await awardLogCoins(req.user._id, 'mood');
-  res.status(201).json(log);
+  // CHECK ACHIEVEMENTS
+  const newAchievements = await checkAndAwardAchievements(req.user._id);
+  res.status(201).json({
+    log,
+    achievements: newAchievements, // send to frontend → show confetti!
+    message: newAchievements.length > 0 
+      ? `Great job! You unlocked ${newAchievements.length} achievement(s)!` 
+      : 'Log saved'
+  });
 };
 
 const update = async (req, res) => {

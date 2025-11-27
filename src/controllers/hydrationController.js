@@ -2,6 +2,7 @@ const HydrationLog = require('../models/HydrationLog');
 const User = require('../models/User');
 const { getPagination } = require('../utils/pagination');
 const { awardLogCoins } = require('../services/coinService');
+const { checkAndAwardAchievements } = require('../services/achievementService');
 
 const getSummary = async (req, res) => {
   const { date } = req.query;
@@ -87,7 +88,16 @@ const createLog = async (req, res) => {
     note
   });
   await awardLogCoins(req.user._id, 'hydration');
-  res.status(201).json(log);
+  
+  // CHECK ACHIEVEMENTS
+  const newAchievements = await checkAndAwardAchievements(req.user._id);
+  res.status(201).json({
+    log,
+    achievements: newAchievements, // send to frontend → show confetti!
+    message: newAchievements.length > 0 
+      ? `Great job! You unlocked ${newAchievements.length} achievement(s)!` 
+      : 'Log saved'
+  });
 };
 
 const updateLog = async (req, res) => {

@@ -1,6 +1,7 @@
 const MedicationSchedule = require("../models/MedicationSchedule");
 const MedicationIntake = require("../models/MedicationIntake");
 const { awardLogCoins } = require("../services/coinService");
+const { checkAndAwardAchievements } = require("../services/achievementService");
 
 const listSchedules = async (req, res) => {
   const schedules = await MedicationSchedule.find({
@@ -72,7 +73,15 @@ const createIntake = async (req, res) => {
   });
 
   await awardLogCoins(req.user._id, "medication");
-  res.status(201).json(intake);
+  // CHECK ACHIEVEMENTS
+  const newAchievements = await checkAndAwardAchievements(req.user._id);
+  res.status(201).json({
+    log,
+    achievements: newAchievements, // send to frontend → show confetti!
+    message: newAchievements.length > 0 
+      ? `Great job! You unlocked ${newAchievements.length} achievement(s)!` 
+      : 'Log saved'
+  });
 };
 
 const history = async (req, res) => {

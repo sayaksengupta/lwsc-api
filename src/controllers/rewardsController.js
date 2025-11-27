@@ -34,19 +34,77 @@ const listTransactions = async (req, res) => {
 
 // ── ACHIEVEMENTS ──
 const getMyAchievements = async (req, res) => {
-  const [achievements, unlocked] = await Promise.all([
-    Achievement.find({ isActive: true }).lean(),
-    UserAchievement.find({ userId: req.user._id }).select('achievementId').lean()
-  ]);
+  const userId = req.user._id;
 
-  const unlockedIds = new Set(unlocked.map(u => u.achievementId.toString()));
+  try {
+    // 1. Get ALL active achievements + user's unlocked ones in ONE query
+    const achievements = await Achievement.aggregate([
+      { $match: { isActive: true } },
 
-  const result = achievements.map(a => ({
-    ...a,
-    isUnlocked: unlockedIds.has(a._id.toString())
-  }));
+      // Left join with UserAchievement
+      {
+        $lookup: {
+          from: 'userachievements',
+          localField: '_id',
+          foreignField: 'achievementId',
+          as: 'userData',
+          pipeline: [
+            { $match: { userId } }
+          ]
+        }
+      },
 
-  res.json(result);
+      // Add computed fields
+      {
+        $addFields: {
+          isUnlocked: { $gt: [{ $size: '$userData' }, 0] },
+          unlockedAt: { $arrayElemAt: ['$userData.awardedAt', 0] }
+        }
+      },
+
+      // Clean up + sort: unlocked first, then by rarity/coins
+      {
+        $project: {
+          userData: 0
+        }
+      },
+
+      { $sort: { isUnlocked: -1, rewardCoins: -1, createdAt: -1 } }
+    ]);
+
+    // Optional: Add progress for streak-based ones (super addictive)
+    const withProgress = await Promise.all(
+      achievements.map(async (ach) => {
+        if (ach.criteria?.type === 'streak' && !ach.isUnlocked) {
+          const currentStreak = await require('../services/achievementService')
+            .checkStreak(userId, ach.criteria.logType || 'any');
+          
+          const progress = Math.min(currentStreak / ach.criteria.value, 1);
+          const daysNeeded = ach.criteria.value - currentStreak;
+
+          return {
+            ...ach,
+            progress,
+            progressText: currentStreak > 0 
+              ? `${daysNeeded} day${daysNeeded === 1 ? '' : 's'} to go!`
+              : 'Start your streak today!'
+          };
+        }
+        return ach;
+      })
+    );
+
+    res.json({
+      success: true,
+      total: achievements.length,
+      unlocked: achievements.filter(a => a.isUnlocked).length,
+      achievements: withProgress
+    });
+
+  } catch (error) {
+    console.error('getMyAchievements error:', error);
+    res.status(500).json({ error: { code: 'SERVER_ERROR' } });
+  }
 };
 
 // ── BADGES ──
