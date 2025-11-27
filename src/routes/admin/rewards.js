@@ -21,7 +21,7 @@ router.post('/achievements',
 );
 
 router.get('/achievements', adminAuth, listAchievements);
-router.patch('/:id', uploadIcon.single('icon'), updateAchievement);
+router.patch('/achievements/:id', uploadIcon.single('icon'), updateAchievement);
 
 // BADGES
 router.post('/badges', 
