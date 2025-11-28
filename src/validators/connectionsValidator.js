@@ -11,7 +11,7 @@ const phoneSchema = Joi.string()
 
 const contactSchema = Joi.object({
   phone: phoneSchema,
-  name: Joi.string().trim().min(2).max(50).optional(),
+  name: Joi.string().trim().min(2).max(50).required(),
   relationship: Joi.string().trim().allow('', null).optional(),
 });
 
