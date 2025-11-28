@@ -134,4 +134,4 @@ const checkAndAwardAchievements = async (userId) => {
   return newAwards;
 };
 
-module.exports = { checkAndAwardAchievements };
+module.exports = { checkAndAwardAchievements, checkStreak };

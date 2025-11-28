@@ -7,6 +7,7 @@ const Badge = require('../models/Badge');
 const UserBadge = require('../models/UserBadge');
 const { getPagination } = require('../utils/pagination');
 const Connection = require('../models/Connection');
+const { checkStreak } = require('../services/achievementService');
 
 const getBalance = async (req, res) => {
   const user = await User.findById(req.user._id).select('coins');
