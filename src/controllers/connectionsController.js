@@ -64,6 +64,108 @@ const create = async (req, res) => {
   res.status(201).json(connection);
 };
 
+const bulkCreate = async (req, res) => {
+  const { contacts } = req.body; // [{ phone: "+923001234567", name?: "Aisha", relationship?: "Friend" }, ...]
+  const currentUserId = req.user._id;
+
+  if (!Array.isArray(contacts) || contacts.length === 0) {
+    return res.status(400).json({
+      error: { code: "INVALID_INPUT", message: "contacts array is required" },
+    });
+  }
+
+  if (contacts.length > 100) {
+    return res.status(400).json({
+      error: {
+        code: "TOO_MANY_CONTACTS",
+        message: "Maximum 100 contacts at a time",
+      },
+    });
+  }
+
+  // 1. Extract phones
+  const phones = contacts.map((c) => c.phone).filter(Boolean);
+  if (phones.length === 0) {
+    return res.status(400).json({
+      error: {
+        code: "NO_VALID_PHONES",
+        message: "No valid phone numbers provided",
+      },
+    });
+  }
+
+  // 2. Check which phones belong to real users
+  const realUsers = await User.find({ phone: { $in: phones } })
+    .select("phone firstName lastName")
+    .lean();
+
+  const realPhoneMap = new Map(realUsers.map((u) => [u.phone, u]));
+
+  // 3. Check existing connections to avoid duplicates
+  const existing = await Connection.find({
+    userId: currentUserId,
+    phone: { $in: phones },
+  }).select("phone");
+
+  const existingPhones = new Set(existing.map((c) => c.phone));
+
+  // 4. Build valid connections to insert
+  const toInsert = [];
+  const skipped = [];
+  const added = [];
+
+  for (const contact of contacts) {
+    const phone = contact.phone?.trim();
+    if (!phone || !realPhoneMap.has(phone)) {
+      skipped.push({ phone, reason: "not_on_app" });
+      continue;
+    }
+
+    if (existingPhones.has(phone)) {
+      skipped.push({ phone, reason: "already_added" });
+      continue;
+    }
+
+    if (realPhoneMap.get(phone)._id.toString() === currentUserId.toString()) {
+      skipped.push({ phone, reason: "is_self" });
+      continue;
+    }
+
+    const targetUser = realPhoneMap.get(phone);
+    toInsert.push({
+      userId: currentUserId,
+      phone,
+      name:
+        contact.name?.trim() ||
+        `${targetUser.firstName} ${targetUser.lastName}`.trim(),
+      relationship: contact.relationship?.trim() || null,
+      isVerified: true,
+    });
+
+    added.push({
+      phone,
+      name:
+        contact.name?.trim() ||
+        `${targetUser.firstName} ${targetUser.lastName}`.trim(),
+    });
+  }
+
+  // 5. Bulk insert if any
+  let created = [];
+  if (toInsert.length > 0) {
+    created = await Connection.insertMany(toInsert);
+  }
+
+  res.status(201).json({
+    success: true,
+    addedCount: added.length,
+    skippedCount: skipped.length,
+    added,
+    skipped,
+    totalProcessed: contacts.length,
+  });
+};
+
 const update = async (req, res) => {
   const { id } = req.params;
   const updates = req.body;
@@ -104,7 +206,6 @@ const remove = async (req, res) => {
 
   res.json({ success: true, message: "Connection removed" });
 };
-
 
 const findFriendsOnApp = async (req, res) => {
   let { phones } = req.body;
@@ -179,4 +280,4 @@ const findFriendsOnApp = async (req, res) => {
   }
 };
 
-module.exports = { list, create, update, remove, findFriendsOnApp };
+module.exports = { list, create, bulkCreate, update, remove, findFriendsOnApp };

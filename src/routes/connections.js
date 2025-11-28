@@ -11,6 +11,7 @@ const {
   update,
   remove,
   findFriendsOnApp,
+  bulkCreate,
 } = require("../controllers/connectionsController");
 const rateLimit = require("express-rate-limit");
 
@@ -26,7 +27,7 @@ const findFriendsLimiter = rateLimit({
 });
 
 router.get("/", auth, list);
-router.post("/", auth, validate(createSchema), create);
+router.post("/", auth, validate(createSchema), bulkCreate);
 router.patch("/:id", auth, validate(updateSchema), update);
 router.delete("/:id", auth, remove);
 router.post("/find-friends", auth, findFriendsLimiter, findFriendsOnApp);
