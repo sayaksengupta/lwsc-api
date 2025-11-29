@@ -1,46 +1,73 @@
 // middleware/activeProfile.js
 const User = require("../models/User");
 
+// Helper to build profile object
+const buildActiveProfile = (user, child = null) => {
+  if (!child) {
+    // Parent mode
+    return {
+      userId: user._id.toString(),
+      name: `${user.firstName} ${user.lastName}`.trim(),
+      type: "parent",
+      isChild: false,
+      childId: null,
+      avatarUrl: user.avatarUrl || null,
+      coins: user.coins || 0,
+    };
+  }
+
+  // Child mode
+  return {
+    userId: child.childId,
+    name: child.name,
+    type: "child",
+    isChild: true,
+    childId: child.childId,
+    avatarUrl: child.avatarUrl || "/avatars/child-default.png",
+    coins: child.coins || 0,
+  };
+};
+
 const getActiveUserId = async (req, res, next) => {
   try {
-    // req.user comes from JWT auth middleware
     if (!req.user?._id) {
       return res.status(401).json({ error: { code: "UNAUTHENTICATED" } });
     }
 
-    const parent = await User.findById(req.user._id)
-      .select("activeProfileId childProfiles")
+    const user = await User.findById(req.user._id)
+      .select(
+        "firstName lastName avatarUrl coins childProfiles activeProfileId"
+      )
       .lean();
 
-    if (!parent) {
+    if (!user) {
       return res.status(404).json({ error: { code: "USER_NOT_FOUND" } });
     }
 
-    // Parent mode
-    if (!parent.activeProfileId) {
-      req.activeUserId = req.user._id;
-      req.activeProfileType = "parent";
-      return next();
-    }
+    // Default: parent mode
+    let activeProfile = buildActiveProfile(user);
 
-    // Child mode — validate child belongs to parent
-    const child = parent.childProfiles.find(
-      (c) => c.childId === parent.activeProfileId
-    );
-    if (!child) {
-      // Auto-fix corrupted state
-      await User.updateOne(
-        { _id: req.user._id },
-        { $set: { activeProfileId: null } }
+    if (user.activeProfileId) {
+      const child = user.childProfiles.find(
+        (c) => c.childId === user.activeProfileId
       );
-      req.activeUserId = req.user._id;
-      req.activeProfileType = "parent";
-      return next();
+      if (child) {
+        activeProfile = buildActiveProfile(user, child);
+      } else {
+        // Corrupted state → reset
+        await User.updateOne(
+          { _id: user._id },
+          { $set: { activeProfileId: null } }
+        );
+      }
     }
 
-    req.activeUserId = parent.activeProfileId;
-    req.activeProfileType = "child";
-    req.activeChildName = child.name; // optional, useful for logs
+    // Attach to req
+    req.activeUserId = activeProfile.userId;
+    req.activeProfile = activeProfile; // ← THIS WAS MISSING!
+    req.activeProfileType = activeProfile.type; // parent or child
+    req.isChildMode = activeProfile.isChild;
+
     next();
   } catch (err) {
     console.error("getActiveUserId error:", err);
