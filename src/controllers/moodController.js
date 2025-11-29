@@ -31,24 +31,37 @@ const list = async (req, res) => {
 const create = async (req, res) => {
   const log = await MoodLog.create({
     ...req.body,
-    userId: req.activeUserId, // ← THIS IS THE MAGIC
-    loggedByParent: req.user._id, // ← Optional: audit trail
+    userId: req.activeUserId,
+    loggedByParent: req.user._id,
   });
 
-  // Award coins & check achievements for the ACTIVE profile
-  await awardLogCoins(req.activeUserId, "mood");
+  // Award coins → returns real result
+  const coinResult = await awardLogCoins(req.activeUserId, "mood");
+
+  // Check achievements
   const newAchievements = await checkAndAwardAchievements(req.activeUserId);
+
+  // Dynamic coins & message
+  const coinsEarned = coinResult?.coins || 0;
+  const alreadyHadCoinsToday = coinResult?.alreadyAwarded || false;
+
+  let message = "Mood log saved";
+  if (newAchievements.length > 0) {
+    const titles = newAchievements.map((a) => a.title).join(", ");
+    message = `Fantastic! ${titles} unlocked!`;
+  }
+  if (coinsEarned > 0) {
+    message += ` +${coinsEarned} coins!`;
+  } else if (alreadyHadCoinsToday) {
+    message += " (Coins already earned today)";
+  }
 
   res.status(201).json({
     log,
     achievements: newAchievements,
-    message:
-      newAchievements.length > 0
-        ? `Fantastic! ${newAchievements
-            .map((a) => a.title)
-            .join(", ")} unlocked!`
-        : "Mood log saved",
-    coinsEarned: 10,
+    coinsEarned,
+    alreadyHadCoinsToday,
+    message,
   });
 };
 

@@ -34,22 +34,36 @@ const list = async (req, res) => {
 const create = async (req, res) => {
   const log = await PainLog.create({
     ...req.body,
-    userId: req.activeUserId, // ← THIS IS THE MAGIC
-    loggedByParent: req.user._id, // ← Optional: audit trail (who logged it)
+    userId: req.activeUserId,
+    loggedByParent: req.user._id,
   });
 
-  // Award coins & check achievements for the ACTIVE profile
-  await awardLogCoins(req.activeUserId, "pain");
+  // Award coins → returns { alreadyAwarded: bool, coins: number }
+  const coinResult = await awardLogCoins(req.activeUserId, "pain");
+
+  // Check achievements
   const newAchievements = await checkAndAwardAchievements(req.activeUserId);
+
+  // Determine message & coins earned
+  const coinsEarned = coinResult?.coins || 0;
+  const alreadyHadCoinsToday = coinResult?.alreadyAwarded || false;
+
+  let message = "Pain log saved";
+  if (newAchievements.length > 0) {
+    message = `Amazing! Unlocked ${newAchievements.length} achievement(s)!`;
+  }
+  if (coinsEarned > 0) {
+    message += ` +${coinsEarned} coins!`;
+  } else if (alreadyHadCoinsToday) {
+    message += " (Coins already earned today)";
+  }
 
   res.status(201).json({
     log,
     achievements: newAchievements,
-    message:
-      newAchievements.length > 0
-        ? `Amazing! ${newAchievements.map((a) => a.title).join(", ")} unlocked!`
-        : "Pain log saved",
-    coinsEarned: 10,
+    coinsEarned,
+    alreadyHadCoinsToday,
+    message,
   });
 };
 

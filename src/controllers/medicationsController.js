@@ -59,14 +59,19 @@ const listIntakes = async (req, res) => {
 const createIntake = async (req, res) => {
   const { id: scheduleId } = req.params;
 
-  // Verify schedule belongs to active profile
+  // Verify schedule belongs to active profile (child or parent)
   const schedule = await MedicationSchedule.findOne({
     _id: scheduleId,
     userId: req.activeUserId,
   });
 
   if (!schedule) {
-    return res.status(404).json({ error: { code: "SCHEDULE_NOT_FOUND" } });
+    return res.status(404).json({
+      error: {
+        code: "SCHEDULE_NOT_FOUND",
+        message: "Medication schedule not found",
+      },
+    });
   }
 
   const intake = await MedicationIntake.create({
@@ -76,17 +81,32 @@ const createIntake = async (req, res) => {
     scheduleId,
   });
 
-  await awardLogCoins(req.activeUserId, "medication");
+  // Award coins – now returns real result
+  const coinResult = await awardLogCoins(req.activeUserId, "medication");
+
+  // Check achievements
   const newAchievements = await checkAndAwardAchievements(req.activeUserId);
+
+  // Dynamic coins & message
+  const coinsEarned = coinResult?.coins || 0;
+  const alreadyHadCoinsToday = coinResult?.alreadyAwarded || false;
+
+  let message = "Medicine logged!";
+  if (newAchievements.length > 0) {
+    message = `Perfect! ${newAchievements.length} achievement(s) unlocked!`;
+  }
+  if (coinsEarned > 0) {
+    message += ` +${coinsEarned} coins!`;
+  } else if (alreadyHadCoinsToday) {
+    message += " (Coins already earned today)";
+  }
 
   res.status(201).json({
     intake,
     achievements: newAchievements,
-    message:
-      newAchievements.length > 0
-        ? `Perfect! ${newAchievements.length} achievement(s) unlocked!`
-        : "Medicine logged!",
-    coinsEarned: 10,
+    coinsEarned,
+    alreadyHadCoinsToday,
+    message,
   });
 };
 

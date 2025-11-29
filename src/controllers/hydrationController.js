@@ -90,17 +90,32 @@ const createLog = async (req, res) => {
     note,
   });
 
-  await awardLogCoins(req.activeUserId, "hydration");
+  // Award coins → returns real result
+  const coinResult = await awardLogCoins(req.activeUserId, "hydration");
+
+  // Check achievements
   const newAchievements = await checkAndAwardAchievements(req.activeUserId);
+
+  // Dynamic coins & message
+  const coinsEarned = coinResult?.coins || 0;
+  const alreadyHadCoinsToday = coinResult?.alreadyAwarded || false;
+
+  let message = "Hydration logged!";
+  if (newAchievements.length > 0) {
+    message = `Amazing! ${newAchievements.length} achievement(s) unlocked!`;
+  }
+  if (coinsEarned > 0) {
+    message += ` +${coinsEarned} coins!`;
+  } else if (alreadyHadCoinsToday) {
+    message += " (Coins already earned today)";
+  }
 
   res.status(201).json({
     log,
     achievements: newAchievements,
-    message:
-      newAchievements.length > 0
-        ? `Amazing! ${newAchievements.length} new achievement(s)!`
-        : "Hydration logged!",
-    coinsEarned: 10,
+    coinsEarned,
+    alreadyHadCoinsToday,
+    message,
   });
 };
 
