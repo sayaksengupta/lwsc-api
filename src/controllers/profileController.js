@@ -1,42 +1,118 @@
 const User = require("../models/User");
 
-const switchProfile = async (req, res) => {
-    const { profileId } = req.body; // null or childId
-  
+// Helper: Build ActiveProfileInfo object
+const buildActiveProfileInfo = (user, activeChild = null) => {
+  if (!activeChild) {
+    // Parent is active
+    return {
+      name: `${user.firstName} ${user.lastName}`,
+      type: "parent",
+      isChild: false,
+      childId: null,
+      avatarUrl: user.avatarUrl || null,
+    };
+  }
+
+  // Child is active
+  return {
+    name: activeChild.name,
+    type: "child",
+    isChild: true,
+    childId: activeChild.childId,
+    avatarUrl: activeChild.avatarUrl || null,
+  };
+};
+
+// GET /profile/active
+const getActiveProfile = async (req, res) => {
+  try {
     const user = await User.findById(req.user._id);
-    if (!user) return res.status(404).json({ error: { code: 'USER_NOT_FOUND' } });
-  
-    // Validate if profileId is valid child
-    if (profileId) {
-      const childExists = user.childProfiles.some(c => c.childId === profileId);
+    if (!user)
+      return res.status(404).json({ error: { code: "USER_NOT_FOUND" } });
+
+    const activeChild = user.childProfiles.find(
+      (c) => c.childId === user.activeProfileId
+    );
+
+    res.json(buildActiveProfileInfo(user, activeChild));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: { code: "SERVER_ERROR" } });
+  }
+};
+
+// GET /profile/list
+const listProfiles = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user)
+      return res.status(404).json({ error: { code: "USER_NOT_FOUND" } });
+
+    const profiles = [
+      {
+        name: `${user.firstName} ${user.lastName}`,
+        type: "parent",
+        isChild: false,
+        childId: null,
+        avatarUrl: user.avatarUrl || null,
+      },
+      ...user.childProfiles.map((child) => ({
+        name: child.name,
+        type: "child",
+        isChild: true,
+        childId: child.childId,
+        avatarUrl: child.avatarUrl || null,
+      })),
+    ];
+
+    res.json(profiles);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: { code: "SERVER_ERROR" } });
+  }
+};
+
+// POST /profile/switch
+const switchProfile = async (req, res) => {
+  const { childId } = req.body; // null, "parent", or childId string
+
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user)
+      return res.status(404).json({ error: { code: "USER_NOT_FOUND" } });
+
+    // Allow switching to parent by sending null or "parent"
+    const targetChildId =
+      childId === "parent" || childId === null || childId === ""
+        ? null
+        : childId;
+
+    // Validate child exists if not switching to parent
+    if (targetChildId) {
+      const childExists = user.childProfiles.some(
+        (c) => c.childId === targetChildId
+      );
       if (!childExists) {
-        return res.status(400).json({ error: { code: 'INVALID_PROFILE' } });
+        return res.status(400).json({ error: { code: "INVALID_CHILD_ID" } });
       }
     }
-  
-    user.activeProfileId = profileId || null;
+
+    user.activeProfileId = targetChildId;
     await user.save();
-  
-    // Return fresh user object with profiles
-    res.json({
-      success: true,
-      user: {
-        id: user._id,
-        hasChildren: user.hasChildren,
-        activeProfileId: user.activeProfileId,
-        profiles: [
-          { profileId: null, name: `${user.firstName} ${user.lastName} (You)`, type: 'parent' },
-          ...user.childProfiles.map(c => ({
-            profileId: c.childId,
-            name: c.name,
-            type: 'child',
-            age: user.calculateAge(c.dob) || c.age,
-            avatarUrl: c.avatarUrl,
-            coins: c.coins
-          }))
-        ]
-      }
-    });
-  };
-  
-  module.exports = { switchProfile };
+
+    const activeChild = targetChildId
+      ? user.childProfiles.find((c) => c.childId === targetChildId)
+      : null;
+
+    res.json(buildActiveProfileInfo(user, activeChild));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: { code: "SERVER_ERROR" } });
+  }
+};
+
+module.exports = {
+  getActiveProfile,
+  listProfiles,
+  switchProfile,
+};
