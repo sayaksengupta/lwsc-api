@@ -14,7 +14,7 @@ const childProfileSchema = new mongoose.Schema(
     dob: { type: Date },
     healthNotes: { type: String, trim: true, default: "" },
     avatarUrl: { type: String, default: "/avatars/child-default.png" },
-    coins: { type: Number, default: 50, min: 0 },
+    coins: { type: Number, default: 0, min: 0 },
     createdAt: { type: Date, default: Date.now },
   },
   { _id: false }
