@@ -1,6 +1,7 @@
 // services/coinService.js
 const User = require("../models/User");
 const CoinTransaction = require("../models/CoinTransaction");
+const { default: mongoose } = require("mongoose");
 
 const COINS_PER_LOG_TYPE_PER_DAY = 10;
 
