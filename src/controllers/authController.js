@@ -53,10 +53,13 @@ const register = async (req, res) => {
     childProfiles = [],
   } = req.body;
 
-  // Check email
+  // Check email/phone conflict
   const existing = await User.findOne({
-    $or: [{ email: email.toLowerCase() }, phone ? { phone } : {}],
+    $or: [{ email: email.toLowerCase() }, phone ? { phone } : {}].filter(
+      Boolean
+    ),
   });
+
   if (existing) {
     return res.status(400).json({
       error: {
@@ -74,19 +77,33 @@ const register = async (req, res) => {
 
   const hashed = await bcrypt.hash(password, 12);
 
-  // Auto-calculate age from DOB if provided
+  // Process children — smart age calculation
   const processedChildren = childProfiles.map((child) => {
-    let age = child.age;
-    if (child.dob && !child.age) {
+    let age = null;
+
+    // If DOB is provided → calculate age
+    if (child.dob) {
       const birthDate = new Date(child.dob);
-      const diff = Date.now() - birthDate.getTime();
-      const ageDate = new Date(diff);
-      age = Math.abs(ageDate.getUTCFullYear() - 1970);
+      const today = new Date();
+      age = today.getFullYear() - birthDate.getFullYear();
+      const m = today.getMonth() - birthDate.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+      }
     }
+
+    // If age is manually provided → use it (but cap at 18 for safety)
+    if (child.age !== undefined) {
+      age = Math.min(18, Math.max(0, Number(child.age)));
+    }
+
     return {
-      ...child,
-      age,
+      name: child.name?.trim() || "My Child",
+      age: age,
+      dob: child.dob || null,
+      healthNotes: child.healthNotes?.trim() || "",
       avatarUrl: child.avatarUrl || "/avatars/child-default.png",
+      coins: 50,
     };
   });
 
@@ -99,6 +116,7 @@ const register = async (req, res) => {
     childProfiles: processedChildren,
     activeProfileId:
       processedChildren.length > 0 ? processedChildren[0].childId : null,
+    coins: 100,
   });
 
   const access = generateAccessToken(user._id);

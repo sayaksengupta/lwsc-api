@@ -10,7 +10,7 @@ const childProfileSchema = new mongoose.Schema(
       unique: true,
     },
     name: { type: String, required: true, trim: true },
-    age: { type: Number, min: 0, max: 18 },
+    age: { type: Number, min: 0 },
     dob: { type: Date },
     healthNotes: { type: String, trim: true, default: "" },
     avatarUrl: { type: String, default: "/avatars/child-default.png" },
