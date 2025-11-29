@@ -20,107 +20,76 @@ const getProfile = async (req, res) => {
 
 const updateProfile = async (req, res) => {
   const userId = req.user._id;
-  const updates = req.body;
+  const { firstName, lastName, email, phone, avatarUrl, children } = req.body;
 
-  // Parent can update:
-  // - Their own profile: firstName, lastName, email, phone, avatarUrl
-  // - Child profiles: add, edit, delete
+  const updateObj = {};
 
-  const userUpdate = {};
-  const childOperations = {};
+  // Parent updates
+  if (firstName) updateObj.firstName = firstName.trim();
+  if (lastName) updateObj.lastName = lastName.trim();
+  if (email) updateObj.email = email.toLowerCase().trim();
+  if (phone !== undefined) updateObj.phone = phone || null;
+  if (avatarUrl !== undefined) updateObj.avatarUrl = avatarUrl;
 
-  // 1. Parent fields
-  if (updates.firstName) userUpdate.firstName = updates.firstName.trim();
-  if (updates.lastName) userUpdate.lastName = updates.lastName.trim();
-  if (updates.email) userUpdate.email = updates.email.toLowerCase().trim();
-  if (updates.phone !== undefined) userUpdate.phone = updates.phone || null;
-  if (updates.avatarUrl !== undefined) userUpdate.avatarUrl = updates.avatarUrl;
+  // Child operations
+  if (Array.isArray(children)) {
+    const push = [];
+    const pull = [];
+    const setUpdates = {};
 
-  // 2. Child operations
-  if (updates.addChild) {
-    // { addChild: { name: "Zain", dob: "2020-01-10", healthNotes: "..." } }
-    childOperations.$push = {
-      childProfiles: {
-        name: updates.addChild.name.trim(),
-        age: updates.addChild.age || null,
-        dob: updates.addChild.dob || null,
-        healthNotes: updates.addChild.healthNotes?.trim() || "",
-        avatarUrl: updates.addChild.avatarUrl || "/avatars/child-default.png",
-        coins: 50,
-      },
-    };
-  }
-
-  if (updates.updateChild && updates.updateChild.childId) {
-    const { childId, ...childUpdates } = updates.updateChild;
-
-    const setFields = {};
-    if (childUpdates.name)
-      setFields["childProfiles.$.name"] = childUpdates.name.trim();
-    if (childUpdates.avatarUrl !== undefined)
-      setFields["childProfiles.$.avatarUrl"] = childUpdates.avatarUrl;
-    if (childUpdates.healthNotes !== undefined)
-      setFields["childProfiles.$.healthNotes"] =
-        childUpdates.healthNotes?.trim() || "";
-    if (childUpdates.dob) setFields["childProfiles.$.dob"] = childUpdates.dob;
-    if (childUpdates.age !== undefined)
-      setFields["childProfiles.$.age"] = childUpdates.age;
-
-    childOperations.$set = {
-      ...childOperations.$set,
-      ...setFields,
-    };
-
-    // For $set on array element, we need arrayFilters
-    childOperations.arrayFilters = [{ "elem.childId": childId }];
-  }
-
-  if (updates.deleteChildId) {
-    childOperations.$pull = {
-      childProfiles: { childId: updates.deleteChildId },
-    };
-  }
-
-  try {
-    const updateObj = {
-      ...userUpdate,
-      ...childOperations,
-    };
-
-    const user = await User.findByIdAndUpdate(userId, updateObj, {
-      new: true,
-      runValidators: true,
-      arrayFilters: childOperations.arrayFilters,
+    children.forEach((child, index) => {
+      if (child.delete && child.childId) {
+        pull.push({ childId: child.childId });
+      } else if (!child.childId) {
+        // Add new child
+        push.push({
+          name: child.name?.trim() || "New Child",
+          dob: child.dob || null,
+          age: child.age || null,
+          healthNotes: child.healthNotes?.trim() || "",
+          avatarUrl: child.avatarUrl || null,
+          coins: 50,
+        });
+      } else {
+        // Update existing
+        const prefix = `childProfiles.$[elem${index}]`;
+        if (child.name) setUpdates[`${prefix}.name`] = child.name.trim();
+        if (child.avatarUrl !== undefined)
+          setUpdates[`${prefix}.avatarUrl`] = child.avatarUrl;
+        if (child.healthNotes !== undefined)
+          setUpdates[`${prefix}.healthNotes`] = child.healthNotes?.trim() || "";
+        if (child.dob) setUpdates[`${prefix}.dob`] = child.dob;
+        if (child.age !== undefined) setUpdates[`${prefix}.age`] = child.age;
+      }
     });
 
-    if (!user) {
-      return res.status(404).json({ error: { code: "USER_NOT_FOUND" } });
+    if (push.length > 0) updateObj.$push = { childProfiles: { $each: push } };
+    if (pull.length > 0)
+      updateObj.$pull = {
+        childProfiles: { $in: pull.map((p) => ({ childId: p.childId })) },
+      };
+    if (Object.keys(setUpdates).length > 0) {
+      updateObj.$set = { ...updateObj.$set, ...setUpdates };
+      updateObj.arrayFilters = children
+        .filter((c) => c.childId)
+        .map((c, i) => ({ [`elem${i}.childId`]: c.childId }));
     }
-
-    // Return fresh active profile
-    const activeProfile = user.getActiveProfile();
-
-    res.json({
-      success: true,
-      message: "Profile updated",
-      profile: {
-        name: activeProfile.name,
-        type: activeProfile.type,
-        isChild: activeProfile.type === "child",
-        canEdit: true,
-        childId: activeProfile.type === "child" ? activeProfile.childId : null,
-        avatarUrl: activeProfile.avatarUrl,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        phone: user.phone,
-      },
-      hasChildren: user.hasChildren,
-    });
-  } catch (err) {
-    console.error("updateProfile error:", err);
-    res.status(500).json({ error: { code: "SERVER_ERROR" } });
   }
+
+  const user = await User.findByIdAndUpdate(userId, updateObj, {
+    new: true,
+    runValidators: true,
+    arrayFilters: updateObj.arrayFilters,
+  });
+
+  res.json({
+    success: true,
+    message: "Profiles updated",
+    updatedChildren:
+      children?.filter((c) => c.childId && !c.delete).length || 0,
+    addedChildren: children?.filter((c) => !c.childId).length || 0,
+    deletedChildren: children?.filter((c) => c.delete).length || 0,
+  });
 };
 
 const getNotifications = async (req, res) => {
