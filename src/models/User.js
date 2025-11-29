@@ -59,7 +59,7 @@ const userSchema = new mongoose.Schema(
 
     refreshToken: { type: String, default: null },
     hydrationGoalOz: { type: Number, default: 64 },
-    coins: { type: Number, default: 100 }, // parent's coins
+    coins: { type: Number, default: 0 }, // parent's coins
 
     // Password Reset
     resetPasswordToken: { type: String },
