@@ -1,8 +1,9 @@
 // routes/rewards.js
-const router = require('express').Router();
-const { auth } = require('../middleware/auth');
-const { validate } = require('../middleware/validate');
-const { listQuerySchema } = require('../validators/rewardsValidator');
+const router = require("express").Router();
+const { auth } = require("../middleware/auth");
+const { getActiveUserId } = require("../middleware/activeProfile");
+const { validate } = require("../middleware/validate");
+const { listQuerySchema } = require("../validators/rewardsValidator");
 
 const {
   getBalance,
@@ -11,17 +12,24 @@ const {
   getAvailableBadges,
   redeemBadge,
   getMyBadges,
-  getLeaderboard
-} = require('../controllers/rewardsController');
+  getLeaderboard,
+} = require("../controllers/rewardsController");
 
-router.get('/coins/balance', auth, getBalance);
-router.get('/coins/transactions', auth, validate(listQuerySchema, 'query'), listTransactions);
+// MIDDLEWARE ORDER IS EVERYTHING
+router.use(auth);
+router.use(getActiveUserId); // ← Sets req.activeUserId (child or parent)
 
-// NEW: Achievements & Badges
-router.get('/achievements', auth, getMyAchievements);
-router.get('/badges/available', auth, getAvailableBadges);
-router.post('/badges/:id/redeem', auth, redeemBadge);
-router.get('/badges/my', auth, getMyBadges);
-router.get('/leaderboard', auth, getLeaderboard);
+router.get("/coins/balance", getBalance);
+router.get(
+  "/coins/transactions",
+  validate(listQuerySchema, "query"),
+  listTransactions
+);
+
+router.get("/achievements", getMyAchievements);
+router.get("/badges/available", getAvailableBadges);
+router.post("/badges/:id/redeem", redeemBadge);
+router.get("/badges/my", getMyBadges);
+router.get("/leaderboard", getLeaderboard);
 
 module.exports = router;

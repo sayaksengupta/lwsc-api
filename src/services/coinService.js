@@ -1,80 +1,94 @@
 // services/coinService.js
-const User = require('../models/User');
-const CoinTransaction = require('../models/CoinTransaction');
+const User = require("../models/User");
+const CoinTransaction = require("../models/CoinTransaction");
 
 const COINS_PER_LOG_TYPE_PER_DAY = 10;
 
 const reasonMap = {
-  pain: 'Logged pain entry',
-  mood: 'Logged mood',
-  hydration: 'Logged hydration',
-  medication: 'Recorded medication intake',
+  pain: "Logged pain entry",
+  mood: "Logged mood",
+  hydration: "Logged hydration",
+  medication: "Recorded medication intake",
+  achievement: "Achievement unlocked!",
+  bonus: "Bonus from parent",
 };
 
-// Helper: Get start/end of current UTC day
+// Helper: UTC day range
 const getUtcDayRange = (date = new Date()) => {
-  const start = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const start = new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
+  );
   const end = new Date(start);
   end.setUTCDate(end.getUTCDate() + 1);
   return { start, end };
 };
 
 /**
- * Award up to 10 coins per log type per UTC day
- * @param {string|ObjectId} userId
- * @param {'pain'|'mood'|'hydration'|'medication'} type
+ * Award coins to the ACTIVE profile (child or parent)
+ * Max 10 coins per log type per UTC day
  */
-const awardLogCoins = async (userId, type) => {
-  if (!reasonMap[type]) {
-    throw new Error('Invalid log type');
-  }
-
+const awardLogCoins = async (activeUserId, type, performedBy = null) => {
   const reason = reasonMap[type];
+  if (!reason) throw new Error("Invalid coin award type");
+
   const { start, end } = getUtcDayRange();
 
-  // 1. Check if user already earned coins for this type today
+  // Prevent duplicate daily reward
   const alreadyEarned = await CoinTransaction.findOne({
-    userId,
+    userId: activeUserId,
     reason,
-    date: { $gte: start, $lt: end }
-  }).lean();
+    date: { $gte: start, $lt: end },
+  });
 
   if (alreadyEarned) {
-    // Already got coins today → do nothing
-    return null;
+    return { alreadyAwarded: true, coins: 0 };
   }
 
-  // 2. Award coins atomically
-  const session = await User.startSession();
-
+  // Atomic award
+  const session = await mongoose.startSession();
   try {
     let transaction;
     await session.withTransaction(async () => {
-      // Increment coins
-      const user = await User.findByIdAndUpdate(
-        userId,
-        { $inc: { coins: COINS_PER_LOG_TYPE_PER_DAY } },
-        { new: true, session }
-      ).select('coins');
+      // Increment coins on correct profile
+      if (activeUserId.startsWith("child_")) {
+        await User.updateOne(
+          { "children.childId": activeUserId },
+          { $inc: { "children.$.coins": COINS_PER_LOG_TYPE_PER_DAY } },
+          { session }
+        );
+      } else {
+        await User.findByIdAndUpdate(
+          activeUserId,
+          { $inc: { coins: COINS_PER_LOG_TYPE_PER_DAY } },
+          { session }
+        );
+      }
 
-      if (!user) throw new Error('User not found');
-
-      // Record transaction
-      transaction = await CoinTransaction.create([{
-        userId,
-        type: 'EARN',
-        amount: COINS_PER_LOG_TYPE_PER_DAY,
-        reason,
-      }], { session });
+      transaction = await CoinTransaction.create(
+        [
+          {
+            userId: activeUserId,
+            performedBy,
+            type: "EARN",
+            amount: COINS_PER_LOG_TYPE_PER_DAY,
+            reason,
+            metadata: { logType: type === "achievement" ? null : type },
+          },
+        ],
+        { session }
+      );
     });
 
-    return transaction?.[0] || null;
-
+    return {
+      alreadyAwarded: false,
+      coins: COINS_PER_LOG_TYPE_PER_DAY,
+      transaction: transaction[0],
+    };
   } catch (error) {
-    console.error('awardLogCoins error:', error);
+    console.error("awardLogCoins error:", error);
     throw error;
   } finally {
-    await session.endSession();
+    session.endSession();
   }
 };
 

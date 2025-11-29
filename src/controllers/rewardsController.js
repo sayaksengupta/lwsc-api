@@ -1,17 +1,21 @@
 // controllers/rewardsController.js
-const User = require('../models/User');
-const CoinTransaction = require('../models/CoinTransaction');
-const Achievement = require('../models/Achievement');
-const UserAchievement = require('../models/UserAchievement');
-const Badge = require('../models/Badge');
-const UserBadge = require('../models/UserBadge');
-const { getPagination } = require('../utils/pagination');
-const Connection = require('../models/Connection');
-const { checkStreak } = require('../services/achievementService');
+const User = require("../models/User");
+const CoinTransaction = require("../models/CoinTransaction");
+const Achievement = require("../models/Achievement");
+const UserAchievement = require("../models/UserAchievement");
+const Badge = require("../models/Badge");
+const UserBadge = require("../models/UserBadge");
+const { getPagination } = require("../utils/pagination");
+const Connection = require("../models/Connection");
+const { checkStreak } = require("../services/achievementService");
 
 const getBalance = async (req, res) => {
-  const user = await User.findById(req.user._id).select('coins');
-  res.json({ balance: user.coins || 0 });
+  const activeProfile = req.activeProfile;
+  res.json({
+    balance: activeProfile.coins || 0,
+    name: activeProfile.name,
+    type: activeProfile.type,
+  });
 };
 
 const listTransactions = async (req, res) => {
@@ -19,225 +23,208 @@ const listTransactions = async (req, res) => {
   const { skip, limit } = getPagination(page, pageSize);
 
   const [data, total] = await Promise.all([
-    CoinTransaction.find({ userId: req.user._id })
+    CoinTransaction.find({ userId: req.activeUserId })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .lean(),
-    CoinTransaction.countDocuments({ userId: req.user._id })
+    CoinTransaction.countDocuments({ userId: req.activeUserId }),
   ]);
 
   res.json({
     data,
-    meta: { page: parseInt(page), pageSize: limit, total }
+    meta: { page: parseInt(page), pageSize: limit, total },
   });
 };
 
-// ── ACHIEVEMENTS ──
 const getMyAchievements = async (req, res) => {
-  const userId = req.user._id;
+  const activeUserId = req.activeUserId;
 
-  try {
-    // 1. Get ALL active achievements + user's unlocked ones in ONE query
-    const achievements = await Achievement.aggregate([
-      { $match: { isActive: true } },
-
-      // Left join with UserAchievement
-      {
-        $lookup: {
-          from: 'userachievements',
-          localField: '_id',
-          foreignField: 'achievementId',
-          as: 'userData',
-          pipeline: [
-            { $match: { userId } }
-          ]
-        }
+  const achievements = await Achievement.aggregate([
+    { $match: { isActive: true } },
+    {
+      $lookup: {
+        from: "userachievements",
+        let: { achId: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ["$achievementId", "$$achId"] },
+                  { $eq: ["$userId", activeUserId] },
+                ],
+              },
+            },
+          },
+        ],
+        as: "userData",
       },
-
-      // Add computed fields
-      {
-        $addFields: {
-          isUnlocked: { $gt: [{ $size: '$userData' }, 0] },
-          unlockedAt: { $arrayElemAt: ['$userData.awardedAt', 0] }
-        }
+    },
+    {
+      $addFields: {
+        isUnlocked: { $gt: [{ $size: "$userData" }, 0] },
+        unlockedAt: { $arrayElemAt: ["$userData.awardedAt", 0] },
       },
+    },
+    { $project: { userData: 0 } },
+    { $sort: { isUnlocked: -1, rewardCoins: -1 } },
+  ]);
 
-      // Clean up + sort: unlocked first, then by rarity/coins
-      {
-        $project: {
-          userData: 0
-        }
-      },
+  // Add streak progress
+  const withProgress = await Promise.all(
+    achievements.map(async (ach) => {
+      if (ach.criteria?.type === "streak" && !ach.isUnlocked) {
+        const current = await checkStreak(
+          activeUserId,
+          ach.criteria.logType || "any"
+        );
+        const needed = ach.criteria.value;
+        return {
+          ...ach,
+          progress: current / needed,
+          daysLeft: needed - current,
+          streak: current,
+        };
+      }
+      return ach;
+    })
+  );
 
-      { $sort: { isUnlocked: -1, rewardCoins: -1, createdAt: -1 } }
-    ]);
-
-    // Optional: Add progress for streak-based ones (super addictive)
-    const withProgress = await Promise.all(
-      achievements.map(async (ach) => {
-        if (ach.criteria?.type === 'streak' && !ach.isUnlocked) {
-          const currentStreak = await require('../services/achievementService')
-            .checkStreak(userId, ach.criteria.logType || 'any');
-          
-          const progress = Math.min(currentStreak / ach.criteria.value, 1);
-          const daysNeeded = ach.criteria.value - currentStreak;
-
-          return {
-            ...ach,
-            progress,
-            progressText: currentStreak > 0 
-              ? `${daysNeeded} day${daysNeeded === 1 ? '' : 's'} to go!`
-              : 'Start your streak today!'
-          };
-        }
-        return ach;
-      })
-    );
-
-    res.json({
-      success: true,
-      total: achievements.length,
-      unlocked: achievements.filter(a => a.isUnlocked).length,
-      achievements: withProgress
-    });
-
-  } catch (error) {
-    console.error('getMyAchievements error:', error);
-    res.status(500).json({ error: { code: 'SERVER_ERROR' } });
-  }
+  res.json({
+    total: achievements.length,
+    unlocked: achievements.filter((a) => a.isUnlocked).length,
+    achievements: withProgress,
+  });
 };
 
-// ── BADGES ──
 const getAvailableBadges = async (req, res) => {
-  const badges = await Badge.find({ isActive: true }).sort({ coinCost: 1 }).lean();
+  const badges = await Badge.find({ isActive: true })
+    .sort({ coinCost: 1 })
+    .lean();
   res.json(badges);
 };
 
 const getMyBadges = async (req, res) => {
-  const myBadges = await UserBadge.find({ userId: req.user._id })
-    .populate('badgeId')
+  const myBadges = await UserBadge.find({ userId: req.activeUserId })
+    .populate("badgeId")
     .sort({ redeemedAt: -1 })
     .lean();
 
-  res.json(myBadges.map(ub => ({
-    ...ub.badgeId,
-    redeemedAt: ub.redeemedAt
-  })));
+  res.json(
+    myBadges.map((ub) => ({
+      ...ub.badgeId,
+      redeemedAt: ub.redeemedAt,
+    }))
+  );
 };
 
 const redeemBadge = async (req, res) => {
   const badgeId = req.params.id;
-  const userId = req.user._id;
+  const activeUserId = req.activeUserId;
 
   const badge = await Badge.findOne({ _id: badgeId, isActive: true });
-  if (!badge) return res.status(404).json({ error: { code: 'BADGE_NOT_FOUND' } });
+  if (!badge)
+    return res.status(404).json({ error: { code: "BADGE_NOT_FOUND" } });
 
-  const user = await User.findById(userId);
-  if (user.coins < badge.coinCost) {
-    return res.status(400).json({ error: { code: 'INSUFFICIENT_COINS' } });
+  const activeProfile = req.activeProfile;
+  if (activeProfile.coins < badge.coinCost) {
+    return res.status(400).json({ error: { code: "INSUFFICIENT_COINS" } });
   }
 
-  const alreadyOwned = await UserBadge.findOne({ userId, badgeId });
+  const alreadyOwned = await UserBadge.findOne({
+    userId: activeUserId,
+    badgeId,
+  });
   if (alreadyOwned) {
-    return res.status(400).json({ error: { code: 'BADGE_ALREADY_OWNED' } });
+    return res.status(400).json({ error: { code: "ALREADY_OWNED" } });
   }
 
-  // Atomic: deduct coins + award badge + record spend
   await Promise.all([
-    User.findByIdAndUpdate(userId, { $inc: { coins: -badge.coinCost } }),
-    UserBadge.create({ userId, badgeId }),
+    User.updateOne(
+      { $or: [{ _id: req.user._id }, { "children.childId": activeUserId }] },
+      {
+        $inc: {
+          $cond: [
+            { $eq: ["$_id", req.user._id] },
+            { coins: -badge.coinCost },
+            { "children.$[elem].coins": -badge.coinCost },
+          ],
+        },
+      },
+      { arrayFilters: [{ "elem.childId": activeUserId }] }
+    ),
+    UserBadge.create({ userId: activeUserId, badgeId }),
     CoinTransaction.create({
-      userId,
-      type: 'SPEND',
+      userId: activeUserId,
+      type: "SPEND",
       amount: badge.coinCost,
-      reason: `Redeemed badge: ${badge.title}`
-    })
+      reason: `Redeemed: ${badge.title}`,
+    }),
   ]);
 
   res.json({
     success: true,
     badge: badge.title,
     coinsSpent: badge.coinCost,
-    remainingCoins: user.coins - badge.coinCost
+    newBalance: activeProfile.coins - badge.coinCost,
   });
 };
 
 const getLeaderboard = async (req, res) => {
-  const currentUserId = req.user._id;
-  const limit = Math.min(parseInt(req.query.limit) || 50, 100); // max 100 for safety
+  const parentId = req.user._id;
+  const limit = Math.min(parseInt(req.query.limit) || 50, 100);
 
-  try {
-    // 1. Get current user
-    const currentUser = await User.findById(currentUserId)
-      .select('firstName lastName coins')
-      .lean();
+  // Get parent's connections
+  const connections = await Connection.find({
+    userId: parentId,
+    isVerified: true,
+  })
+    .select("phone")
+    .lean();
+  const phones = connections.map((c) => c.phone);
 
-    if (!currentUser) {
-      return res.status(404).json({ error: { code: 'USER_NOT_FOUND' } });
-    }
+  // Get all family members (parent + children + connected families)
+  const familyUsers = await User.find({
+    $or: [{ _id: parentId }, { phone: { $in: phones } }],
+  })
+    .select("firstName lastName children.name children.coins children.childId")
+    .lean();
 
-    // 2. Get verified connections' phones
-    const connections = await Connection.find({
-      userId: currentUserId,
-      isVerified: true
-    }).select('phone').lean();
+  const entries = [];
 
-    const connectionPhones = connections.map(c => c.phone).filter(Boolean);
-
-    // 3. Fetch all relevant users (me + connections)
-    const users = await User.find({
-      $or: [
-        { _id: currentUserId },
-        { phone: { $in: connectionPhones } }
-      ]
-    }).select('firstName lastName coins').lean();
-
-    // 4. Build & sort leaderboard
-    const leaderboard = users
-      .map(user => {
-        const name = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Anonymous';
-        const isMe = user._id.toString() === currentUserId.toString();
-
-        return {
-          userId: user._id.toString(),
-          name: isMe ? `${name} (You)` : name,
-          coins: user.coins || 0,
-          isMe
-        };
-      })
-      .sort((a, b) => b.coins - a.coins);
-
-    // 5. Assign ranks
-    leaderboard.forEach((entry, index) => {
-      entry.rank = index + 1;
+  familyUsers.forEach((user) => {
+    // Parent
+    entries.push({
+      name: `${user.firstName} ${user.lastName}`.trim(),
+      coins: user.coins || 0,
+      type: "parent",
+      isMe: user._id.toString() === parentId.toString(),
     });
 
-    // 6. My rank & coins
-    const myEntry = leaderboard.find(e => e.isMe);
-    const myRank = myEntry?.rank || null;
-    const myCoins = myEntry?.coins || 0;
-
-    // 7. Apply limit (top N only — no pagination needed for small list)
-    const topN = leaderboard.slice(0, limit);
-
-    res.json({
-      success: true,
-      myRank,
-      myCoins,
-      totalParticipants: leaderboard.length,
-      leaderboard: topN.map(({ rank, name, coins, isMe }) => ({
-        rank,
-        name,
-        coins,
-        isMe
-      }))
+    // Children
+    user.children?.forEach((child) => {
+      entries.push({
+        name: child.name,
+        coins: child.coins || 0,
+        type: "child",
+        isMe: child.childId === req.activeUserId,
+      });
     });
+  });
 
-  } catch (error) {
-    console.error('Leaderboard error:', error);
-    res.status(500).json({ error: { code: 'SERVER_ERROR' } });
-  }
+  const sorted = entries
+    .sort((a, b) => b.coins - a.coins)
+    .map((e, i) => ({ ...e, rank: i + 1 }))
+    .slice(0, limit);
+
+  const myEntry = sorted.find((e) => e.isMe);
+
+  res.json({
+    myRank: myEntry?.rank || null,
+    myCoins: myEntry?.coins || 0,
+    leaderboard: sorted,
+  });
 };
 
 module.exports = {
@@ -247,5 +234,5 @@ module.exports = {
   getAvailableBadges,
   getMyBadges,
   redeemBadge,
-  getLeaderboard
+  getLeaderboard,
 };

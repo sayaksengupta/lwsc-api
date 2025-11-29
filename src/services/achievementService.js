@@ -1,20 +1,20 @@
 // services/achievementService.js
-const Achievement = require('../models/Achievement');
-const UserAchievement = require('../models/UserAchievement');
-const User = require('../models/User');
-const PainLog = require('../models/PainLog');
-const MoodLog = require('../models/MoodLog');
-const HydrationLog = require('../models/HydrationLog');
-const MedicationIntake = require('../models/MedicationIntake');
-const { awardLogCoins } = require('./coinService');
+const Achievement = require("../models/Achievement");
+const UserAchievement = require("../models/UserAchievement");
+const User = require("../models/User");
+const PainLog = require("../models/PainLog");
+const MoodLog = require("../models/MoodLog");
+const HydrationLog = require("../models/HydrationLog");
+const MedicationIntake = require("../models/MedicationIntake");
+const { awardLogCoins } = require("./coinService");
 
-const getLogCount = async (userId, days = null, type = 'any') => {
-  const match = { userId };
+const getLogCount = async (activeUserId, days = null, type = "any") => {
+  const match = { userId: activeUserId };
   if (days) {
     const start = new Date();
     start.setUTCHours(0, 0, 0, 0);
     start.setUTCDate(start.getUTCDate() - days + 1);
-    match.dateTime = { $gte: start };
+    match.date = { $gte: start };
   }
 
   const models = {
@@ -22,21 +22,19 @@ const getLogCount = async (userId, days = null, type = 'any') => {
     mood: MoodLog,
     hydration: HydrationLog,
     medication: MedicationIntake,
-    any: null
   };
 
-  if (type !== 'any') {
+  if (type !== "any" && models[type]) {
     return await models[type].countDocuments(match);
   }
 
-  // Count all logs
   const counts = await Promise.all(
-    Object.values(models).filter(Boolean).map(Model => Model.countDocuments(match))
+    Object.values(models).map((Model) => Model.countDocuments(match))
   );
   return counts.reduce((a, b) => a + b, 0);
 };
 
-const checkStreak = async (userId, logType = 'any') => {
+const checkStreak = async (activeUserId, logType = "any") => {
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
 
@@ -47,7 +45,7 @@ const checkStreak = async (userId, logType = 'any') => {
     pain: PainLog,
     mood: MoodLog,
     hydration: HydrationLog,
-    medication: MedicationIntake
+    medication: MedicationIntake,
   };
 
   while (true) {
@@ -57,18 +55,20 @@ const checkStreak = async (userId, logType = 'any') => {
 
     let hasLog = false;
 
-    if (logType === 'any') {
+    if (logType === "any") {
       const results = await Promise.all(
-        Object.values(models).map(Model => Model.exists({
-          userId,
-          dateTime: { $gte: dayStart, $lt: dayEnd }
-        }))
+        Object.values(models).map((Model) =>
+          Model.exists({
+            userId: activeUserId,
+            date: { $gte: dayStart, $lt: dayEnd },
+          })
+        )
       );
       hasLog = results.some(Boolean);
-    } else {
+    } else if (models[logType]) {
       hasLog = await models[logType].exists({
-        userId,
-        dateTime: { $gte: dayStart, $lt: dayEnd }
+        userId: activeUserId,
+        date: { $gte: dayStart, $lt: dayEnd },
       });
     }
 
@@ -80,53 +80,62 @@ const checkStreak = async (userId, logType = 'any') => {
   return streak;
 };
 
-const checkAndAwardAchievements = async (userId) => {
-  const activeAchievements = await Achievement.find({ isActive: true }).lean();
+const checkAndAwardAchievements = async (activeUserId, performedBy = null) => {
+  const achievements = await Achievement.find({ isActive: true }).lean();
+  const awarded = await UserAchievement.find({ userId: activeUserId })
+    .select("achievementId")
+    .lean();
 
-  const awarded = await UserAchievement.find({ userId }).select('achievementId');
-
-  const alreadyAwardedIds = new Set(awarded.map(a => a.achievementId.toString()));
-
+  const awardedIds = new Set(awarded.map((a) => a.achievementId.toString()));
   const newAwards = [];
 
-  for (const ach of activeAchievements) {
-    if (alreadyAwardedIds.has(ach._id.toString())) continue;
+  for (const ach of achievements) {
+    if (awardedIds.has(ach._id.toString())) continue;
 
-    let conditionMet = false;
+    let met = false;
 
     switch (ach.criteria.type) {
-      case 'streak':
-        const streak = await checkStreak(userId, ach.criteria.logType);
-        if (streak >= ach.criteria.value) conditionMet = true;
+      case "streak":
+        const streak = await checkStreak(activeUserId, ach.criteria.logType);
+        if (streak >= ach.criteria.value) met = true;
         break;
 
-      case 'total_logs':
-        const total = await getLogCount(userId, null, ach.criteria.logType);
-        if (total >= ach.criteria.value) conditionMet = true;
+      case "total_logs":
+        const total = await getLogCount(
+          activeUserId,
+          null,
+          ach.criteria.logType
+        );
+        if (total >= ach.criteria.value) met = true;
         break;
 
-      case 'monthly_logs':
-        const monthly = await getLogCount(userId, 30, ach.criteria.logType);
-        if (monthly >= ach.criteria.value) conditionMet = true;
+      case "monthly_logs":
+        const monthly = await getLogCount(
+          activeUserId,
+          30,
+          ach.criteria.logType
+        );
+        if (monthly >= ach.criteria.value) met = true;
         break;
     }
 
-    if (conditionMet) {
-      // Award it!
+    if (met) {
       await UserAchievement.create({
-        userId,
-        achievementId: ach._id
+        userId: activeUserId,
+        achievementId: ach._id,
       });
 
-      // Give coins
       if (ach.rewardCoins > 0) {
-        await awardLogCoins(userId, 'achievement'); // or custom reason
-        // Or directly: User.findByIdAndUpdate(userId, { $inc: { coins: ach.rewardCoins } })
+        await awardLogCoins(activeUserId, "achievement", performedBy);
       }
 
       newAwards.push({
-        achievement: ach,
-        message: `Unlocked: ${ach.title}!`
+        _id: ach._id,
+        title: ach.title,
+        description: ach.description,
+        icon: ach.icon,
+        rewardCoins: ach.rewardCoins,
+        message: `Unlocked: ${ach.title}!`,
       });
     }
   }
@@ -134,4 +143,4 @@ const checkAndAwardAchievements = async (userId) => {
   return newAwards;
 };
 
-module.exports = { checkAndAwardAchievements, checkStreak };
+module.exports = { checkAndAwardAchievements, checkStreak, getLogCount };

@@ -1,7 +1,8 @@
 const mongoose = require("mongoose");
 
 const userAchievementSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  // Now stores childId string OR parent _id
+  userId: { type: String, required: true, index: true },
   achievementId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Achievement",
@@ -11,5 +12,4 @@ const userAchievementSchema = new mongoose.Schema({
 });
 
 userAchievementSchema.index({ userId: 1, achievementId: 1 }, { unique: true });
-
 module.exports = mongoose.model("UserAchievement", userAchievementSchema);

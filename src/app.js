@@ -57,6 +57,8 @@ app.use('/api/v1/medications', medicationRoutes);
 app.use('/api/v1/admin/auth', require('./routes/admin/auth'));
 app.use('/api/v1/admin/rewards', require('./routes/admin/rewards'));
 
+app.use('/api/v1/profile', require('./routes/profile'));
+
 app.use(errorHandler);
 
 module.exports = app;

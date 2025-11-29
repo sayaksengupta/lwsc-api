@@ -1,21 +1,53 @@
-const router = require('express').Router();
-const { auth } = require('../middleware/auth');
-const { validate } = require('../middleware/validate');
-const medicationValidator = require('../validators/medicationValidator');
+// routes/medications.js
+const router = require("express").Router();
+const { auth } = require("../middleware/auth");
+const { getActiveUserId } = require("../middleware/activeProfile"); // ← CRITICAL
+const { validate } = require("../middleware/validate");
+const medicationValidator = require("../validators/medicationValidator");
 const {
-  listSchedules, createSchedule, updateSchedule, deleteSchedule,
-  listIntakes, createIntake, history, adherence
-} = require('../controllers/medicationsController');
+  listSchedules,
+  createSchedule,
+  updateSchedule,
+  deleteSchedule,
+  listIntakes,
+  createIntake,
+  history,
+  adherence,
+} = require("../controllers/medicationsController");
 
-router.get('/', auth, listSchedules);
-router.post('/', auth, validate(medicationValidator.createSchema), createSchedule);
-router.patch('/:id', auth, validate(medicationValidator.updateSchema), updateSchedule);
-router.delete('/:id', auth, deleteSchedule);
+// MIDDLEWARE ORDER IS EVERYTHING
+router.use(auth); // sets req.user (parent)
+router.use(getActiveUserId); // sets req.activeUserId (child or parent)
 
-router.get('/:id/intakes', auth, validate(medicationValidator.intakeQuerySchema, 'query'), listIntakes);
-router.post('/:id/intakes', auth, validate(medicationValidator.intakeCreateSchema), createIntake);
+router.get("/", listSchedules);
+router.post("/", validate(medicationValidator.createSchema), createSchedule);
+router.patch(
+  "/:id",
+  validate(medicationValidator.updateSchema),
+  updateSchedule
+);
+router.delete("/:id", deleteSchedule);
 
-router.get('/history', auth, validate(medicationValidator.dateRangeSchema, 'query'), history);
-router.get('/adherence', auth, validate(medicationValidator.dateRangeSchema, 'query'), adherence);
+router.get(
+  "/:id/intakes",
+  validate(medicationValidator.intakeQuerySchema, "query"),
+  listIntakes
+);
+router.post(
+  "/:id/intakes",
+  validate(medicationValidator.intakeCreateSchema),
+  createIntake
+);
+
+router.get(
+  "/history",
+  validate(medicationValidator.dateRangeSchema, "query"),
+  history
+);
+router.get(
+  "/adherence",
+  validate(medicationValidator.dateRangeSchema, "query"),
+  adherence
+);
 
 module.exports = router;

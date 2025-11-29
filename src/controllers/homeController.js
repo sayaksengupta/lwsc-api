@@ -1,3 +1,4 @@
+// controllers/homeController.js
 const PainLog = require("../models/PainLog");
 const MoodLog = require("../models/MoodLog");
 const HydrationLog = require("../models/HydrationLog");
@@ -8,7 +9,9 @@ const Event = require("../models/Event");
 const formatRecentLog = require("../utils/formatRecentLog");
 
 const getWidgets = async (req, res) => {
-  const userId = req.user._id;
+  const activeUserId = req.activeUserId; // ← Child or Parent
+  const parentId = req.user._id; // ← Real parent (for goal, coins)
+
   const today = new Date();
   const startOfDay = new Date(
     today.getFullYear(),
@@ -17,7 +20,7 @@ const getWidgets = async (req, res) => {
   );
   const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
 
-  // Fetch all data in parallel
+  // Fetch all data in parallel — using activeUserId for logs
   const [
     painToday,
     moodToday,
@@ -27,20 +30,26 @@ const getWidgets = async (req, res) => {
     user,
     upcomingEvents,
   ] = await Promise.all([
-    PainLog.find({ userId, date: { $gte: startOfDay, $lt: endOfDay } }).lean(),
-    MoodLog.find({ userId, date: { $gte: startOfDay, $lt: endOfDay } }).lean(),
+    PainLog.find({
+      userId: activeUserId,
+      date: { $gte: startOfDay, $lt: endOfDay },
+    }).lean(),
+    MoodLog.find({
+      userId: activeUserId,
+      date: { $gte: startOfDay, $lt: endOfDay },
+    }).lean(),
     HydrationLog.find({
-      userId,
+      userId: activeUserId,
       date: { $gte: startOfDay, $lt: endOfDay },
     }).lean(),
     MedicationIntake.find({
-      userId,
+      userId: activeUserId,
       dateTime: { $gte: startOfDay, $lt: endOfDay },
     }).lean(),
-    MedicationSchedule.find({ userId, status: "Active" }).lean(),
-    User.findById(userId).select("hydrationGoalOz coins").lean(),
+    MedicationSchedule.find({ userId: activeUserId, status: "Active" }).lean(),
+    User.findById(parentId).select("hydrationGoalOz coins firstName").lean(),
     Event.find({
-      userId,
+      userId: activeUserId,
       date: { $gte: startOfDay, $lt: endOfDay },
       type: { $in: ["appointment", "medication"] },
     })
@@ -79,11 +88,11 @@ const getWidgets = async (req, res) => {
   // 3. Hydration Progress
   const totalOz = hydrationToday.reduce((s, h) => s + h.amountOz, 0);
   const hydrationProgress = {
-    currentOz: totalOz,
-    goalOz: user.hydrationGoalOz || 64,
+    currentOz: Number(totalOz.toFixed(1)),
+    goalOz: user?.hydrationGoalOz || 64,
     percentage: Math.min(
       100,
-      Number(((totalOz / (user.hydrationGoalOz || 64)) * 100).toFixed(0))
+      Math.round((totalOz / (user?.hydrationGoalOz || 64)) * 100)
     ),
   };
 
@@ -118,10 +127,16 @@ const getWidgets = async (req, res) => {
     type: e.type,
   }));
 
-  // 6. Coin Balance
-  const coinBalance = user.coins || 0;
+  // 6. Coin Balance — now shows child's coins if in child mode
+  const activeProfile = req.user.getActiveProfile(); // uses method from User model
+  const coinBalance = activeProfile.coins;
 
   res.json({
+    profile: {
+      name: activeProfile.name,
+      type: activeProfile.type,
+      isChild: activeProfile.type === "child",
+    },
     painSummary,
     moodSummary,
     hydrationProgress,
@@ -131,7 +146,7 @@ const getWidgets = async (req, res) => {
   });
 };
 
-// Helper: Get most frequent mood emoji
+// Helper: Most frequent emoji
 const getDominantMood = (logs) => {
   if (logs.length === 0) return null;
   const counts = logs.reduce((acc, log) => {
@@ -144,11 +159,21 @@ const getDominantMood = (logs) => {
 const getRecentLogs = async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+    const activeUserId = req.activeUserId;
 
     const [painLogs, moodLogs, hydrationLogs] = await Promise.all([
-      PainLog.find({ userId: req.user.id }).sort({ date: -1 }).limit(limit).lean(),
-      MoodLog.find({ userId: req.user.id }).sort({ date: -1 }).limit(limit).lean(),
-      HydrationLog.find({ userId: req.user.id }).sort({ date: -1 }).limit(limit).lean(),
+      PainLog.find({ userId: activeUserId })
+        .sort({ date: -1 })
+        .limit(limit)
+        .lean(),
+      MoodLog.find({ userId: activeUserId })
+        .sort({ date: -1 })
+        .limit(limit)
+        .lean(),
+      HydrationLog.find({ userId: activeUserId })
+        .sort({ date: -1 })
+        .limit(limit)
+        .lean(),
     ]);
 
     const allLogs = [...painLogs, ...moodLogs, ...hydrationLogs]
@@ -158,8 +183,8 @@ const getRecentLogs = async (req, res) => {
 
     res.json(allLogs);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: { message: 'Server error' } });
+    console.error("Home recent logs error:", err);
+    res.status(500).json({ error: { message: "Server error" } });
   }
 };
 

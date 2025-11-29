@@ -1,5 +1,7 @@
+// routes/hydration.js
 const router = require("express").Router();
 const { auth } = require("../middleware/auth");
+const { getActiveUserId } = require("../middleware/activeProfile");
 const { validate } = require("../middleware/validate");
 const {
   createLogSchema,
@@ -18,13 +20,17 @@ const {
   setGoal,
 } = require("../controllers/hydrationController");
 
-router.get("/summary", auth, validate(summaryQuerySchema, "query"), getSummary);
-router.get("/logs", auth, validate(listQuerySchema, "query"), listLogs);
-router.post("/logs", auth, validate(createLogSchema), createLog);
-router.patch("/logs/:id", auth, validate(updateLogSchema), updateLog);
-router.delete("/logs/:id", auth, deleteLog);
+// MIDDLEWARE ORDER MATTERS
+router.use(auth); // sets req.user (parent)
+router.use(getActiveUserId); // sets req.activeUserId (child or parent)
 
-router.get("/goals", auth, getGoal);
-router.put("/goals", auth, validate(goalSchema), setGoal);
+router.get("/summary", validate(summaryQuerySchema, "query"), getSummary);
+router.get("/logs", validate(listQuerySchema, "query"), listLogs);
+router.post("/logs", validate(createLogSchema), createLog);
+router.patch("/logs/:id", validate(updateLogSchema), updateLog);
+router.delete("/logs/:id", deleteLog);
+
+router.get("/goals", getGoal);
+router.put("/goals", validate(goalSchema), setGoal);
 
 module.exports = router;

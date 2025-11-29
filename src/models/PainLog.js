@@ -1,16 +1,33 @@
-const mongoose = require('mongoose');
+// models/PainLog.js
+const mongoose = require("mongoose");
 
 const painLogSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  // This is the ACTIVE profile (childId or parent _id)
+  userId: {
+    type: String, // ← CHANGED FROM ObjectId TO String
+    required: true,
+    index: true,
+  },
+
+  // Optional: Keep track of who actually logged it (parent)
+  loggedByParent: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    index: true,
+  },
+
   date: { type: Date, required: true },
   location: { type: String, required: true, trim: true },
   moodEmoji: { type: String, default: null },
   painType: { type: String, required: true, trim: true },
   intensity: { type: Number, min: 0, max: 10, required: true },
   notes: { type: String, default: null },
-  createdAt: { type: Date, default: Date.now, index: true }
+  createdAt: { type: Date, default: Date.now, index: true },
 });
 
-painLogSchema.index({ userId: 1, date: -1 });
+// Composite indexes for performance
+painLogSchema.index({ userId: 1, date: -1 }); // Most important: list + stats
+painLogSchema.index({ loggedByParent: 1, date: -1 }); // For parent audit views
+painLogSchema.index({ userId: 1, createdAt: -1 });
 
-module.exports = mongoose.model('PainLog', painLogSchema);
+module.exports = mongoose.model("PainLog", painLogSchema);
