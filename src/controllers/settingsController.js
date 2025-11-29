@@ -19,26 +19,108 @@ const getProfile = async (req, res) => {
 };
 
 const updateProfile = async (req, res) => {
-  // ONLY the parent can update their own profile
-  if (req.activeProfile.type !== "parent") {
-    return res.status(403).json({
-      error: { code: "FORBIDDEN", message: "Only parent can update profile" },
-    });
+  const userId = req.user._id;
+  const updates = req.body;
+
+  // Parent can update:
+  // - Their own profile: firstName, lastName, email, phone, avatarUrl
+  // - Child profiles: add, edit, delete
+
+  const userUpdate = {};
+  const childOperations = {};
+
+  // 1. Parent fields
+  if (updates.firstName) userUpdate.firstName = updates.firstName.trim();
+  if (updates.lastName) userUpdate.lastName = updates.lastName.trim();
+  if (updates.email) userUpdate.email = updates.email.toLowerCase().trim();
+  if (updates.phone !== undefined) userUpdate.phone = updates.phone || null;
+  if (updates.avatarUrl !== undefined) userUpdate.avatarUrl = updates.avatarUrl;
+
+  // 2. Child operations
+  if (updates.addChild) {
+    // { addChild: { name: "Zain", dob: "2020-01-10", healthNotes: "..." } }
+    childOperations.$push = {
+      childProfiles: {
+        name: updates.addChild.name.trim(),
+        age: updates.addChild.age || null,
+        dob: updates.addChild.dob || null,
+        healthNotes: updates.addChild.healthNotes?.trim() || "",
+        avatarUrl: updates.addChild.avatarUrl || "/avatars/child-default.png",
+        coins: 50,
+      },
+    };
   }
 
-  const updates = req.body;
-  const user = await User.findByIdAndUpdate(req.user._id, updates, {
-    new: true,
-    runValidators: true,
-  }).select("firstName lastName email phone avatarUrl");
+  if (updates.updateChild && updates.updateChild.childId) {
+    const { childId, ...childUpdates } = updates.updateChild;
 
-  res.json({
-    firstName: user.firstName,
-    lastName: user.lastName,
-    email: user.email,
-    phone: user.phone,
-    avatarUrl: user.avatarUrl,
-  });
+    const setFields = {};
+    if (childUpdates.name)
+      setFields["childProfiles.$.name"] = childUpdates.name.trim();
+    if (childUpdates.avatarUrl !== undefined)
+      setFields["childProfiles.$.avatarUrl"] = childUpdates.avatarUrl;
+    if (childUpdates.healthNotes !== undefined)
+      setFields["childProfiles.$.healthNotes"] =
+        childUpdates.healthNotes?.trim() || "";
+    if (childUpdates.dob) setFields["childProfiles.$.dob"] = childUpdates.dob;
+    if (childUpdates.age !== undefined)
+      setFields["childProfiles.$.age"] = childUpdates.age;
+
+    childOperations.$set = {
+      ...childOperations.$set,
+      ...setFields,
+    };
+
+    // For $set on array element, we need arrayFilters
+    childOperations.arrayFilters = [{ "elem.childId": childId }];
+  }
+
+  if (updates.deleteChildId) {
+    childOperations.$pull = {
+      childProfiles: { childId: updates.deleteChildId },
+    };
+  }
+
+  try {
+    const updateObj = {
+      ...userUpdate,
+      ...childOperations,
+    };
+
+    const user = await User.findByIdAndUpdate(userId, updateObj, {
+      new: true,
+      runValidators: true,
+      arrayFilters: childOperations.arrayFilters,
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: { code: "USER_NOT_FOUND" } });
+    }
+
+    // Return fresh active profile
+    const activeProfile = user.getActiveProfile();
+
+    res.json({
+      success: true,
+      message: "Profile updated",
+      profile: {
+        name: activeProfile.name,
+        type: activeProfile.type,
+        isChild: activeProfile.type === "child",
+        canEdit: true,
+        childId: activeProfile.type === "child" ? activeProfile.childId : null,
+        avatarUrl: activeProfile.avatarUrl,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        phone: user.phone,
+      },
+      hasChildren: user.hasChildren,
+    });
+  } catch (err) {
+    console.error("updateProfile error:", err);
+    res.status(500).json({ error: { code: "SERVER_ERROR" } });
+  }
 };
 
 const getNotifications = async (req, res) => {
