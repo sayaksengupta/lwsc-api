@@ -175,47 +175,56 @@ const getLeaderboard = async (req, res) => {
   const parentId = req.user._id;
   const limit = Math.min(parseInt(req.query.limit) || 50, 100);
 
-  // Get parent's connections
+  // Get parent's verified connections
   const connections = await Connection.find({
     userId: parentId,
     isVerified: true,
   })
     .select("phone")
     .lean();
-  const phones = connections.map((c) => c.phone);
 
-  // Get all family members (parent + children + connected families)
+  const connectedPhones = connections.map((c) => c.phone);
+
+  // CRITICAL: Include "coins" field for parent!
   const familyUsers = await User.find({
-    $or: [{ _id: parentId }, { phone: { $in: phones } }],
+    $or: [{ _id: parentId }, { phone: { $in: connectedPhones } }],
   })
-    .select("firstName lastName children.name children.coins children.childId")
+    .select(
+      "firstName lastName coins childProfiles.name childProfiles.coins childProfiles.childId"
+    )
     .lean();
 
   const entries = [];
 
   familyUsers.forEach((user) => {
-    // Parent
+    const isMeParent = user._id.toString() === parentId.toString();
+
+    // Parent entry
     entries.push({
-      name: `${user.firstName} ${user.lastName}`.trim(),
-      coins: user.coins || 0,
+      name: `${user.firstName || ""} ${user.lastName || ""}`.trim() || "Parent",
+      coins: user.coins || 0, // ← NOW THIS IS INCLUDED!
       type: "parent",
-      isMe: user._id.toString() === parentId.toString(),
+      isMe: isMeParent,
     });
 
-    // Children
-    user.children?.forEach((child) => {
+    // Children entries
+    user.childProfiles?.forEach((child) => {
       entries.push({
-        name: child.name,
+        name: child.name || "Child",
         coins: child.coins || 0,
         type: "child",
-        isMe: child.childId === req.activeUserId,
+        isMe: child.childId === req.activeUserId, // works when parent views or child views
       });
     });
   });
 
+  // Sort by coins descending
   const sorted = entries
     .sort((a, b) => b.coins - a.coins)
-    .map((e, i) => ({ ...e, rank: i + 1 }))
+    .map((entry, index) => ({
+      ...entry,
+      rank: index + 1,
+    }))
     .slice(0, limit);
 
   const myEntry = sorted.find((e) => e.isMe);

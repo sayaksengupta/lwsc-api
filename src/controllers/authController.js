@@ -103,7 +103,6 @@ const register = async (req, res) => {
       dob: child.dob || null,
       healthNotes: child.healthNotes?.trim() || "",
       avatarUrl: child.avatarUrl || "/avatars/child-default.png",
-      coins: 50,
     };
   });
 

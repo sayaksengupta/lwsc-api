@@ -48,7 +48,6 @@ const updateProfile = async (req, res) => {
           age: child.age || null,
           healthNotes: child.healthNotes?.trim() || "",
           avatarUrl: child.avatarUrl || null,
-          coins: 50,
         });
       } else {
         // Update existing
