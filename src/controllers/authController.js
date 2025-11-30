@@ -116,7 +116,6 @@ const register = async (req, res) => {
     childProfiles: processedChildren,
     activeProfileId:
       processedChildren.length > 0 ? processedChildren[0].childId : null,
-    coins: 100,
   });
 
   const access = generateAccessToken(user._id);
