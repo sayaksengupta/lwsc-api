@@ -155,7 +155,7 @@ const login = async (req, res) => {
   await user.save();
 
   res.json({
-    user: formatUser(user),
+    user: formatUserResponse(user),
     token: {
       access,
       refresh,
