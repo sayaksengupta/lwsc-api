@@ -172,10 +172,10 @@ const redeemBadge = async (req, res) => {
 };
 
 const getLeaderboard = async (req, res) => {
-  const parentId = req.user._id;
+  const parentId = req.user._id; // Logged-in parent
   const limit = Math.min(parseInt(req.query.limit) || 50, 100);
 
-  // Get parent's verified connections
+  // Step 1: Get all verified connections (their phones)
   const connections = await Connection.find({
     userId: parentId,
     isVerified: true,
@@ -185,37 +185,53 @@ const getLeaderboard = async (req, res) => {
 
   const connectedPhones = connections.map((c) => c.phone);
 
-  // CRITICAL: Include "coins" field for parent!
-  const familyUsers = await User.find({
-    $or: [{ _id: parentId }, { phone: { $in: connectedPhones } }],
+  // Step 2: Fetch all relevant users — but only the fields we need
+  const users = await User.find({
+    $or: [
+      { _id: parentId }, // My own account
+      { phone: { $in: connectedPhones } }, // My friends' accounts
+    ],
   })
     .select(
-      "firstName lastName coins childProfiles.name childProfiles.coins childProfiles.childId"
+      `
+      firstName 
+      lastName 
+      coins 
+      phone 
+      childProfiles.name 
+      childProfiles.coins 
+      childProfiles.childId
+    `
     )
     .lean();
 
   const entries = [];
 
-  familyUsers.forEach((user) => {
-    const isMeParent = user._id.toString() === parentId.toString();
+  users.forEach((user) => {
+    const isMe = user._id.toString() === parentId.toString();
 
-    // Parent entry
+    // ── ALWAYS show the parent (you or your friend)
     entries.push({
-      name: `${user.firstName || ""} ${user.lastName || ""}`.trim() || "Parent",
-      coins: user.coins || 0, // ← NOW THIS IS INCLUDED!
+      name: `${user.firstName || ""} ${user.lastName || ""}`.trim() || "User",
+      coins: user.coins || 0,
       type: "parent",
-      isMe: isMeParent,
+      isMe,
+      userId: user._id.toString(),
     });
 
-    // Children entries
-    user.childProfiles?.forEach((child) => {
-      entries.push({
-        name: child.name || "Child",
-        coins: child.coins || 0,
-        type: "child",
-        isMe: child.childId === req.activeUserId, // works when parent views or child views
+    // ── ONLY show children if this is MY OWN account
+    if (isMe) {
+      user.childProfiles?.forEach((child) => {
+        entries.push({
+          name: child.name || "Child",
+          coins: child.coins || 0,
+          type: "child",
+          isMe: child.childId === req.activeUserId, // works when child is active
+          childId: child.childId,
+        });
       });
-    });
+    }
+    // If it's a friend's account → skip their children completely
   });
 
   // Sort by coins descending
