@@ -217,35 +217,28 @@ const findFriendsOnApp = async (req, res) => {
     });
   }
 
-  // ── 2. Universal phone normalizer (handles +92, 0092, 92, 03xx, etc.)
-  const normalizePhone = (phone) => {
+  // ── 2. Normalize to EXACTLY match your DB format: 10-digit string (e.g. "6290345325")
+  const normalizeToRaw10Digit = (phone) => {
     if (typeof phone !== "string") return null;
-    let cleaned = phone.trim().replace(/\s/g, "");
 
-    // Remove all non-digits except leading +
-    cleaned = cleaned.replace(/[^\d+]/g, "");
+    // Remove everything except digits
+    let digits = phone.replace(/\D/g, "");
 
-    // Handle common prefixes
-    if (cleaned.startsWith("00")) {
-      cleaned = "+" + cleaned.slice(2);
-    }
-    if (cleaned.startsWith("0") && !cleaned.startsWith("0")) {
-      // If starts with single 0 but not 00 → remove it (Pakistan local format)
-      cleaned = cleaned.slice(1);
-    }
+    // Remove common country codes if present
+    if (digits.startsWith("91") && digits.length === 12)
+      digits = digits.slice(2); // +91
+    if (digits.startsWith("92") && digits.length === 12)
+      digits = digits.slice(2); // +92
+    if (digits.startsWith("0091") && digits.length === 14)
+      digits = digits.slice(4);
+    if (digits.startsWith("0092") && digits.length === 14)
+      digits = digits.slice(4);
 
-    // If no country code → assume India (+91)
-    if (/^\d{10}$/.test(cleaned)) {
-      cleaned = "91" + cleaned; // → 913331234567
-    }
+    // Remove leading zero (common in local format: 03331234567 → 3331234567 → becomes 6290345325 later)
+    if (digits.startsWith("0")) digits = digits.slice(1);
 
-    // Ensure it starts with +
-    if (cleaned && !cleaned.startsWith("+")) {
-      cleaned = "+" + cleaned;
-    }
-
-    // Final validation: must be + followed by 10–15 digits
-    return /^\+\d{10,15}$/.test(cleaned) ? cleaned : null;
+    // Final: must be exactly 10 digits (India, Pakistan, Bangladesh standard mobile)
+    return /^\d{10}$/.test(digits) ? digits : null;
   };
 
   // ── 3. Normalize, dedupe, limit
@@ -253,11 +246,11 @@ const findFriendsOnApp = async (req, res) => {
   const normalized = [];
 
   for (const p of phones) {
-    const clean = normalizePhone(p);
+    const clean = normalizeToRaw10Digit(p);
     if (clean && !seen.has(clean)) {
       seen.add(clean);
       normalized.push(clean);
-      if (normalized.length >= 1000) break; // safe cap
+      if (normalized.length >= 1000) break;
     }
   }
 
@@ -266,7 +259,7 @@ const findFriendsOnApp = async (req, res) => {
   }
 
   try {
-    // ── 4. Query DB using normalized E.164 format (e.g. +923331234567)
+    // ── 4. Query DB using raw 10-digit format (EXACTLY how it's stored in your DB)
     const existingUsers = await User.find(
       { phone: { $in: normalized } },
       { phone: 1, firstName: 1, lastName: 1, avatarUrl: 1 }
@@ -291,7 +284,7 @@ const findFriendsOnApp = async (req, res) => {
     // ── 5. Not on app
     const notOnApp = normalized
       .filter((p) => !foundMap.has(p))
-      .map((phone) => ({ phone, isOnApp: false }));
+      .map((phone) => ({ phone: "+" + phone, isOnApp: false })); // return with + for frontend
 
     // ── 6. Response
     res.json({
@@ -300,6 +293,7 @@ const findFriendsOnApp = async (req, res) => {
       notOnApp,
       totalSent: phones.length,
       validCount: normalized.length,
+      matchedCount: matches.length,
     });
   } catch (error) {
     console.error("findFriendsOnApp error:", error);
