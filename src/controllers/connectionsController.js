@@ -210,26 +210,54 @@ const remove = async (req, res) => {
 const findFriendsOnApp = async (req, res) => {
   let { phones } = req.body;
 
-  // ── 1. Input validation (fast fail)
+  // ── 1. Input validation
   if (!phones || !Array.isArray(phones) || phones.length === 0) {
     return res.status(400).json({
       error: { code: "INVALID_PHONES", message: "Phones array is required" },
     });
   }
 
-  // ── 2. Normalize + dedupe + limit (5000 max)
-  const phoneSet = new Set();
+  // ── 2. Universal phone normalizer (handles +92, 0092, 92, 03xx, etc.)
+  const normalizePhone = (phone) => {
+    if (typeof phone !== "string") return null;
+    let cleaned = phone.trim().replace(/\s/g, "");
+
+    // Remove all non-digits except leading +
+    cleaned = cleaned.replace(/[^\d+]/g, "");
+
+    // Handle common prefixes
+    if (cleaned.startsWith("00")) {
+      cleaned = "+" + cleaned.slice(2);
+    }
+    if (cleaned.startsWith("0") && !cleaned.startsWith("0")) {
+      // If starts with single 0 but not 00 → remove it (Pakistan local format)
+      cleaned = cleaned.slice(1);
+    }
+
+    // If no country code → assume India (+91)
+    if (/^\d{10}$/.test(cleaned)) {
+      cleaned = "91" + cleaned; // → 913331234567
+    }
+
+    // Ensure it starts with +
+    if (cleaned && !cleaned.startsWith("+")) {
+      cleaned = "+" + cleaned;
+    }
+
+    // Final validation: must be + followed by 10–15 digits
+    return /^\+\d{10,15}$/.test(cleaned) ? cleaned : null;
+  };
+
+  // ── 3. Normalize, dedupe, limit
+  const seen = new Set();
   const normalized = [];
 
   for (const p of phones) {
-    if (typeof p !== "string") continue;
-    const cleaned = p.trim();
-    if (cleaned && cleaned.length >= 10 && cleaned.length <= 20) {
-      if (!phoneSet.has(cleaned)) {
-        phoneSet.add(cleaned);
-        normalized.push(cleaned);
-        if (normalized.length >= 5000) break; // hard cap
-      }
+    const clean = normalizePhone(p);
+    if (clean && !seen.has(clean)) {
+      seen.add(clean);
+      normalized.push(clean);
+      if (normalized.length >= 1000) break; // safe cap
     }
   }
 
@@ -238,34 +266,31 @@ const findFriendsOnApp = async (req, res) => {
   }
 
   try {
-    // ── 3. Single indexed query (fastest possible)
+    // ── 4. Query DB using normalized E.164 format (e.g. +923331234567)
     const existingUsers = await User.find(
       { phone: { $in: normalized } },
-      { phone: 1, firstName: 1, lastName: 1, _id: 0 } // only what we need
-    )
-      .lean()
-      .exec();
+      { phone: 1, firstName: 1, lastName: 1, avatarUrl: 1 }
+    ).lean();
 
-    // ── 4. Build lookup map (O(n) → fastest possible)
     const foundMap = new Map();
     const matches = [];
 
     for (const user of existingUsers) {
-      const key = user.phone;
-      if (!foundMap.has(key)) {
-        foundMap.set(key, true);
+      if (!foundMap.has(user.phone)) {
+        foundMap.set(user.phone, true);
         matches.push({
           phone: user.phone,
           name:
             `${user.firstName || ""} ${user.lastName || ""}`.trim() || "User",
+          avatarUrl: user.avatarUrl || null,
           isOnApp: true,
         });
       }
     }
 
-    // ── 5. Not found (only if you want to send invite option)
+    // ── 5. Not on app
     const notOnApp = normalized
-      .filter((phone) => !foundMap.has(phone))
+      .filter((p) => !foundMap.has(p))
       .map((phone) => ({ phone, isOnApp: false }));
 
     // ── 6. Response
@@ -273,6 +298,8 @@ const findFriendsOnApp = async (req, res) => {
       success: true,
       matches,
       notOnApp,
+      totalSent: phones.length,
+      validCount: normalized.length,
     });
   } catch (error) {
     console.error("findFriendsOnApp error:", error);
