@@ -7,7 +7,10 @@ const buildActiveProfile = (user, child = null) => {
     // Parent mode
     return {
       userId: user._id.toString(),
-      name: `${user.firstName} ${user.lastName}`.trim(),
+      firstName: `${user.firstName.trim()}`,
+      lastName: `${user.lastName.trim()}`,
+      phone: user.phone,
+      email: user.email,
       type: "parent",
       isChild: false,
       childId: null,
@@ -36,7 +39,7 @@ const getActiveUserId = async (req, res, next) => {
 
     const user = await User.findById(req.user._id)
       .select(
-        "firstName lastName avatarUrl coins childProfiles activeProfileId"
+        "firstName lastName avatarUrl email phone coins childProfiles activeProfileId"
       )
       .lean();
 
