@@ -2,93 +2,167 @@
 const User = require("../models/User");
 
 const getProfile = async (req, res) => {
-  const activeProfile = req.activeProfile; // from getActiveUserId middleware
+  try {
+    const activeProfile = req.activeProfile; // Already built by middleware
+    const parent = req.parentUser; // Full parent document with childProfiles
 
-  res.json({
-    name: activeProfile.name,
-    firstName: activeProfile.firstName || activeProfile.name.split(" ")[0],
-    lastName: activeProfile.lastName || "",
-    email: activeProfile.email || null,
-    phone: activeProfile.phone || null,
-    avatarUrl: activeProfile.avatarUrl || null,
-    type: activeProfile.type, // "parent" or "child"
-    isChild: activeProfile.type === "child",
-    canEdit: activeProfile.type === "parent", // only parent can edit
-    childId: activeProfile.type === "child" ? activeProfile.childId : null,
-  });
+    if (!parent) {
+      return res.status(404).json({ error: { code: "USER_NOT_FOUND" } });
+    }
+
+    // Build children list (only shown to parent)
+    const children = (parent.childProfiles || []).map((child) => ({
+      childId: child.childId,
+      name: child.name || "Child",
+      age: child.age || null,
+      dob: child.dob || null,
+      avatarUrl: child.avatarUrl || "/avatars/child-default.png",
+      coins: child.coins || 0,
+      isActive: child.childId === parent.activeProfileId,
+    }));
+
+    // Calculate total family coins
+    const totalFamilyCoins =
+      (parent.coins || 0) +
+      children.reduce((sum, c) => sum + (c.coins || 0), 0);
+
+    res.json({
+      // Active profile (parent or child)
+      name:
+        activeProfile.name ||
+        `${activeProfile.firstName || ""} ${
+          activeProfile.lastName || ""
+        }`.trim(),
+      firstName: activeProfile.firstName || null,
+      lastName: activeProfile.lastName || null,
+      email: activeProfile.email || null,
+      phone: activeProfile.phone || null,
+      avatarUrl: activeProfile.avatarUrl || null,
+      coins: activeProfile.coins || 0,
+      type: activeProfile.type, // "parent" or "child"
+      isChild: activeProfile.isChild,
+      canEdit: activeProfile.type === "parent",
+      childId: activeProfile.childId || null,
+
+      // Parent-only data
+      hasChildren: children.length > 0,
+      children: activeProfile.type === "parent" ? children : [], // hidden from child
+      totalFamilyCoins:
+        activeProfile.type === "parent" ? totalFamilyCoins : null,
+    });
+  } catch (error) {
+    console.error("getProfile error:", error);
+    res.status(500).json({ error: { code: "SERVER_ERROR" } });
+  }
 };
 
 const updateProfile = async (req, res) => {
   const userId = req.user._id;
+
+  // Only parent can update profile
+  if (req.activeProfile.type !== "parent") {
+    return res
+      .status(403)
+      .json({
+        error: { code: "FORBIDDEN", message: "Only parent can edit profile" },
+      });
+  }
+
   const { firstName, lastName, email, phone, avatarUrl, children } = req.body;
 
-  const updateObj = {};
+  const updateOps = {};
 
-  // Parent updates
-  if (firstName) updateObj.firstName = firstName.trim();
-  if (lastName) updateObj.lastName = lastName.trim();
-  if (email) updateObj.email = email.toLowerCase().trim();
-  if (phone !== undefined) updateObj.phone = phone || null;
-  if (avatarUrl !== undefined) updateObj.avatarUrl = avatarUrl;
+  // ── Parent fields ──
+  if (firstName !== undefined) updateOps["firstName"] = firstName.trim();
+  if (lastName !== undefined) updateOps["lastName"] = lastName.trim();
+  if (email !== undefined) updateOps["email"] = email.toLowerCase().trim();
+  if (phone !== undefined) updateOps["phone"] = phone || null;
+  if (avatarUrl !== undefined) updateOps["avatarUrl"] = avatarUrl || null;
 
-  // Child operations
-  if (Array.isArray(children)) {
-    const push = [];
-    const pull = [];
-    const setUpdates = {};
+  // ── Child operations (safe, reliable, no arrayFilters hell) ──
+  if (Array.isArray(children) && children.length > 0) {
+    const newChildren = [];
+    const childIdsToDelete = new Set();
 
-    children.forEach((child, index) => {
+    children.forEach((child) => {
       if (child.delete && child.childId) {
-        pull.push({ childId: child.childId });
+        childIdsToDelete.add(child.childId);
       } else if (!child.childId) {
         // Add new child
-        push.push({
-          name: child.name?.trim() || "New Child",
+        newChildren.push({
+          childId: `child_${new mongoose.Types.ObjectId()}`, // matches your default
+          name: (child.name || "New Child").trim(),
           dob: child.dob || null,
-          age: child.age || null,
+          age: child.age !== undefined ? child.age : null,
           healthNotes: child.healthNotes?.trim() || "",
-          avatarUrl: child.avatarUrl || null,
+          avatarUrl: child.avatarUrl || "/avatars/child-default.png",
+          coins: 0,
+          createdAt: new Date(),
         });
       } else {
-        // Update existing
-        const prefix = `childProfiles.$[elem${index}]`;
-        if (child.name) setUpdates[`${prefix}.name`] = child.name.trim();
-        if (child.avatarUrl !== undefined)
-          setUpdates[`${prefix}.avatarUrl`] = child.avatarUrl;
-        if (child.healthNotes !== undefined)
-          setUpdates[`${prefix}.healthNotes`] = child.healthNotes?.trim() || "";
-        if (child.dob) setUpdates[`${prefix}.dob`] = child.dob;
-        if (child.age !== undefined) setUpdates[`${prefix}.age`] = child.age;
+        // Keep existing (will update below)
+        newChildren.push({
+          childId: child.childId,
+          name: (child.name || "").trim(),
+          dob: child.dob || null,
+          age: child.age !== undefined ? child.age : null,
+          healthNotes: child.healthNotes?.trim() || "",
+          avatarUrl: child.avatarUrl || "/avatars/child-default.png",
+        });
       }
     });
 
-    if (push.length > 0) updateObj.$push = { childProfiles: { $each: push } };
-    if (pull.length > 0)
-      updateObj.$pull = {
-        childProfiles: { $in: pull.map((p) => ({ childId: p.childId })) },
-      };
-    if (Object.keys(setUpdates).length > 0) {
-      updateObj.$set = { ...updateObj.$set, ...setUpdates };
-      updateObj.arrayFilters = children
-        .filter((c) => c.childId)
-        .map((c, i) => ({ [`elem${i}.childId`]: c.childId }));
-    }
+    // Build full childProfiles array (replace entire array — safest)
+    updateOps["childProfiles"] = newChildren.filter(
+      (c) => !childIdsToDelete.has(c.childId)
+    );
   }
 
-  const user = await User.findByIdAndUpdate(userId, updateObj, {
-    new: true,
-    runValidators: true,
-    arrayFilters: updateObj.arrayFilters,
-  });
+  try {
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { $set: updateOps },
+      { new: true, runValidators: true }
+    ).select("firstName lastName email phone avatarUrl childProfiles");
 
-  res.json({
-    success: true,
-    message: "Profiles updated",
-    updatedChildren:
-      children?.filter((c) => c.childId && !c.delete).length || 0,
-    addedChildren: children?.filter((c) => !c.childId).length || 0,
-    deletedChildren: children?.filter((c) => c.delete).length || 0,
-  });
+    if (!updatedUser) {
+      return res.status(404).json({ error: { code: "USER_NOT_FOUND" } });
+    }
+
+    res.json({
+      success: true,
+      message: "Profile updated successfully",
+      profile: {
+        firstName: updatedUser.firstName,
+        lastName: updatedUser.lastName,
+        email: updatedUser.email,
+        phone: updatedUser.phone,
+        avatarUrl: updatedUser.avatarUrl,
+        children: updatedUser.childProfiles.map((c) => ({
+          childId: c.childId,
+          name: c.name,
+          age: c.age,
+          dob: c.dob,
+          healthNotes: c.healthNotes,
+          avatarUrl: c.avatarUrl,
+          coins: c.coins,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error("updateProfile error:", error);
+    if (error.code === 11000) {
+      return res
+        .status(400)
+        .json({
+          error: {
+            code: "DUPLICATE",
+            message: "Email or phone already in use",
+          },
+        });
+    }
+    res.status(500).json({ error: { code: "SERVER_ERROR" } });
+  }
 };
 
 const getNotifications = async (req, res) => {
