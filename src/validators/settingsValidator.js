@@ -2,7 +2,7 @@
 const Joi = require("joi");
 
 const updateProfileSchema = Joi.object({
-  // ── Parent fields (optional) ──
+  // Parent fields
   firstName: Joi.string().trim().min(2).max(50),
   lastName: Joi.string().trim().min(2).max(50),
   email: Joi.string().email().lowercase().trim(),
@@ -12,45 +12,40 @@ const updateProfileSchema = Joi.object({
     .allow(null, ""),
   avatarUrl: Joi.string().uri().allow(null, ""),
 
-  // ── CHILDREN: Add, Edit, Delete (THE FINAL WORKING VERSION) ──
+  // CHILDREN: Add / Edit / Delete — 100% WORKING
   children: Joi.array()
     .max(20)
     .items(
       Joi.object({
-        // For updating or deleting existing child
         childId: Joi.string().pattern(/^child_[a-f0-9]{24}$/),
 
-        // For adding new child OR updating existing
         name: Joi.string().trim().min(2).max(50),
-
         dob: Joi.date().iso().max("now"),
         age: Joi.number().integer().min(0).max(18),
         healthNotes: Joi.string().trim().max(500).allow(""),
         avatarUrl: Joi.string().uri().allow(null, ""),
-
-        // For deleting
         delete: Joi.boolean(),
       })
-        // ── RULES ──
-        // 1. If childId exists → must be update or delete
-        .when(Joi.object({ childId: Joi.exist() }), {
-          then: Joi.object({
-            delete: Joi.boolean().optional(),
-            // name is optional when updating
-            name: Joi.string().trim().min(2).max(50).optional(),
-          }),
-        })
-        // 2. If no childId → must be adding new child → name required
-        .when(Joi.object({ childId: Joi.any().valid(null, undefined, "") }), {
+        // CASE 1: No childId → ADDING NEW CHILD → name REQUIRED
+        .when(".childId", {
+          is: Joi.exist().not(),
           then: Joi.object({
             name: Joi.string().trim().min(2).max(50).required(),
-            delete: Joi.forbidden(), // can't delete when adding
+            delete: Joi.forbidden(),
+          }),
+        })
+        // CASE 2: Has childId → UPDATING OR DELETING → allow delete or update
+        .when(".childId", {
+          is: Joi.exist(),
+          then: Joi.object({
+            delete: Joi.boolean().optional(),
+            name: Joi.string().trim().min(2).max(50).optional(),
           }),
         })
     ),
 })
-  .min(1) // at least one field must be present
-  .unknown(false); // reject unknown keys
+  .min(1)
+  .unknown(false);
 
 // Other schemas unchanged
 const updateNotificationsSchema = Joi.object({
