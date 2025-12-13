@@ -2,7 +2,6 @@
 const { default: mongoose } = require("mongoose");
 const User = require("../models/User");
 
-
 const getProfile = async (req, res) => {
   try {
     const activeProfile = req.activeProfile; // Already built by middleware
@@ -63,11 +62,9 @@ const updateProfile = async (req, res) => {
 
   // Only parent can update profile
   if (req.activeProfile.type !== "parent") {
-    return res
-      .status(403)
-      .json({
-        error: { code: "FORBIDDEN", message: "Only parent can edit profile" },
-      });
+    return res.status(403).json({
+      error: { code: "FORBIDDEN", message: "Only parent can edit profile" },
+    });
   }
 
   const { firstName, lastName, email, phone, avatarUrl, children } = req.body;
@@ -154,14 +151,12 @@ const updateProfile = async (req, res) => {
   } catch (error) {
     console.error("updateProfile error:", error);
     if (error.code === 11000) {
-      return res
-        .status(400)
-        .json({
-          error: {
-            code: "DUPLICATE",
-            message: "Email or phone already in use",
-          },
-        });
+      return res.status(400).json({
+        error: {
+          code: "DUPLICATE",
+          message: "Email or phone already in use",
+        },
+      });
     }
     res.status(500).json({ error: { code: "SERVER_ERROR" } });
   }
@@ -221,6 +216,109 @@ const updatePrivacy = async (req, res) => {
   res.json(user.settings.privacy);
 };
 
+const addChild = async (req, res) => {
+  if (req.activeProfile.type !== "parent") {
+    return res.status(403).json({ error: { code: "FORBIDDEN" } });
+  }
+
+  const newChild = {
+    childId: `child_${new mongoose.Types.ObjectId()}`,
+    name: req.body.name.trim(),
+    dob: req.body.dob || null,
+    age: req.body.age || null,
+    healthNotes: req.body.healthNotes?.trim() || "",
+    avatarUrl: req.body.avatarUrl || "/avatars/child-default.png",
+    coins: 50,
+    createdAt: new Date(),
+  };
+
+  const updated = await User.findByIdAndUpdate(
+    req.user._id,
+    { $push: { childProfiles: newChild } },
+    { new: true, runValidators: true }
+  );
+
+  res.status(201).json({
+    success: true,
+    message: "Child added",
+    child: newChild,
+  });
+};
+
+const updateChild = async (req, res) => {
+  if (req.activeProfile.type !== "parent") {
+    return res.status(403).json({ error: { code: "FORBIDDEN" } });
+  }
+
+  const { childId } = req.params;
+  const updates = req.body;
+
+  const updateFields = {};
+  if (updates.name) updateFields["childProfiles.$.name"] = updates.name.trim();
+  if (updates.dob !== undefined)
+    updateFields["childProfiles.$.dob"] = updates.dob;
+  if (updates.age !== undefined)
+    updateFields["childProfiles.$.age"] = updates.age;
+  if (updates.healthNotes !== undefined)
+    updateFields["childProfiles.$.healthNotes"] =
+      updates.healthNotes?.trim() || "";
+  if (updates.avatarUrl !== undefined)
+    updateFields["childProfiles.$.avatarUrl"] = updates.avatarUrl;
+
+  const updated = await User.findOneAndUpdate(
+    { _id: req.user._id, "childProfiles.childId": childId },
+    { $set: updateFields },
+    { new: true }
+  );
+
+  if (!updated) {
+    return res.status(404).json({ error: { code: "CHILD_NOT_FOUND" } });
+  }
+
+  res.json({ success: true, message: "Child updated" });
+};
+
+const deleteChild = async (req, res) => {
+  if (req.activeProfile.type !== "parent") {
+    return res.status(403).json({ error: { code: "FORBIDDEN" } });
+  }
+
+  const { childId } = req.params;
+
+  const updated = await User.findByIdAndUpdate(
+    req.user._id,
+    { $pull: { childProfiles: { childId } } },
+    { new: true }
+  );
+
+  if (!updated) {
+    return res.status(404).json({ error: { code: "CHILD_NOT_FOUND" } });
+  }
+
+  res.json({ success: true, message: "Child deleted" });
+};
+
+const updateParentProfile = async (req, res) => {
+  if (req.activeProfile.type !== "parent") {
+    return res.status(403).json({ error: { code: "FORBIDDEN" } });
+  }
+
+  const updates = req.body;
+  const updateObj = {};
+
+  if (updates.firstName) updateObj.firstName = updates.firstName.trim();
+  if (updates.lastName) updateObj.lastName = updates.lastName.trim();
+  if (updates.email) updateObj.email = updates.email.toLowerCase().trim();
+  if (updates.phone !== undefined) updateObj.phone = updates.phone || null;
+  if (updates.avatarUrl !== undefined) updateObj.avatarUrl = updates.avatarUrl;
+
+  const updated = await User.findByIdAndUpdate(req.user._id, updateObj, {
+    new: true,
+  });
+
+  res.json({ success: true, message: "Profile updated" });
+};
+
 module.exports = {
   getProfile,
   updateProfile,
@@ -230,4 +328,8 @@ module.exports = {
   updateReminders,
   getPrivacy,
   updatePrivacy,
+  addChild,
+  updateChild,
+  deleteChild,
+  updateParentProfile
 };

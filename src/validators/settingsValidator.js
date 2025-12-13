@@ -2,7 +2,7 @@
 const Joi = require("joi");
 
 const updateProfileSchema = Joi.object({
-  // Parent fields
+  // ── Parent fields ──
   firstName: Joi.string().trim().min(2).max(50),
   lastName: Joi.string().trim().min(2).max(50),
   email: Joi.string().email().lowercase().trim(),
@@ -12,7 +12,7 @@ const updateProfileSchema = Joi.object({
     .allow(null, ""),
   avatarUrl: Joi.string().uri().allow(null, ""),
 
-  // CHILDREN: Add / Edit / Delete — 100% WORKING
+  // ── CHILDREN: Add / Edit / Delete (100% WORKING) ──
   children: Joi.array()
     .max(20)
     .items(
@@ -26,9 +26,9 @@ const updateProfileSchema = Joi.object({
         avatarUrl: Joi.string().uri().allow(null, ""),
         delete: Joi.boolean(),
       })
-        // CASE 1: No childId → ADDING NEW CHILD → name REQUIRED
+        // CASE 1: No childId → ADDING NEW CHILD → name REQUIRED, delete forbidden
         .when(".childId", {
-          is: Joi.exist().not(),
+          is: Joi.any().valid(null, ""),
           then: Joi.object({
             name: Joi.string().trim().min(2).max(50).required(),
             delete: Joi.forbidden(),
