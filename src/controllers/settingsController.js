@@ -229,7 +229,7 @@ const addChild = async (req, res) => {
     age: req.body.age || null,
     healthNotes: req.body.healthNotes?.trim() || "",
     avatarUrl: req.body.avatarUrl || "/avatars/child-default.png",
-    coins: 50,
+    coins: 0,
     createdAt: new Date(),
   };
 
