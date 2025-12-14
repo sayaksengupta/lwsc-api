@@ -217,6 +217,7 @@ const updatePrivacy = async (req, res) => {
 };
 
 const addChild = async (req, res) => {
+  console.log(req.body)
   if (req.activeProfile.type !== "parent") {
     return res.status(403).json({ error: { code: "FORBIDDEN" } });
   }

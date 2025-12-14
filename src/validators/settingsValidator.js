@@ -1,53 +1,33 @@
 // validators/settingsValidator.js
 const Joi = require("joi");
 
-const updateProfileSchema = Joi.object({
-  // ── Parent fields ──
+// Parent profile update (only personal info)
+const updateParentSchema = Joi.object({
   firstName: Joi.string().trim().min(2).max(50),
   lastName: Joi.string().trim().min(2).max(50),
   email: Joi.string().email().lowercase().trim(),
-  phone: Joi.string()
-    .trim()
-    .pattern(/^[\d\s\-\+\(\)]*$/)
-    .allow(null, ""),
+  phone: Joi.string().trim().allow(null, ""),
   avatarUrl: Joi.string().uri().allow(null, ""),
+}).min(1);
 
-  // ── CHILDREN: Add / Edit / Delete (100% WORKING) ──
-  children: Joi.array()
-    .max(20)
-    .items(
-      Joi.object({
-        childId: Joi.string().pattern(/^child_[a-f0-9]{24}$/),
+// Add new child
+const addChildSchema = Joi.object({
+  name: Joi.string().trim().min(2).max(50).required(),
+  dob: Joi.date().iso().max("now"),
+  age: Joi.number().integer().min(0).max(18),
+  healthNotes: Joi.string().trim().max(500).allow(""),
+  avatarUrl: Joi.string().uri().allow(null, ""),
+}).min(1);
 
-        name: Joi.string().trim().min(2).max(50),
-        dob: Joi.date().iso().max("now"),
-        age: Joi.number().integer().min(0).max(18),
-        healthNotes: Joi.string().trim().max(500).allow(""),
-        avatarUrl: Joi.string().uri().allow(null, ""),
-        delete: Joi.boolean(),
-      })
-        // CASE 1: No childId → ADDING NEW CHILD → name REQUIRED, delete forbidden
-        .when(".childId", {
-          is: Joi.any().valid(null, ""),
-          then: Joi.object({
-            name: Joi.string().trim().min(2).max(50).required(),
-            delete: Joi.forbidden(),
-          }),
-        })
-        // CASE 2: Has childId → UPDATING OR DELETING → allow delete or update
-        .when(".childId", {
-          is: Joi.exist(),
-          then: Joi.object({
-            delete: Joi.boolean().optional(),
-            name: Joi.string().trim().min(2).max(50).optional(),
-          }),
-        })
-    ),
-})
-  .min(1)
-  .unknown(false);
+// Update existing child
+const updateChildSchema = Joi.object({
+  name: Joi.string().trim().min(2).max(50),
+  dob: Joi.date().iso().max("now"),
+  age: Joi.number().integer().min(0).max(18),
+  healthNotes: Joi.string().trim().max(500).allow(""),
+  avatarUrl: Joi.string().uri().allow(null, ""),
+}).min(1);
 
-// Other schemas unchanged
 const updateNotificationsSchema = Joi.object({
   hydration: Joi.boolean(),
   medication: Joi.boolean(),
@@ -67,7 +47,9 @@ const updatePrivacySchema = Joi.object({
 }).min(1);
 
 module.exports = {
-  updateProfileSchema,
+  updateParentSchema,
+  addChildSchema,
+  updateChildSchema,
   updateNotificationsSchema,
   updateRemindersSchema,
   updatePrivacySchema,
