@@ -18,6 +18,7 @@ const getProfile = async (req, res) => {
       age: child.age || null,
       dob: child.dob || null,
       avatarUrl: child.avatarUrl || "/avatars/child-default.png",
+      healthNotes: child.healthNotes,
       coins: child.coins || 0,
       isActive: child.childId === parent.activeProfileId,
     }));
