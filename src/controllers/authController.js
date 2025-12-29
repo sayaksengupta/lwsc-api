@@ -80,8 +80,7 @@ const register = async (req, res) => {
   // Process children — smart age calculation
   const processedChildren = childProfiles.map((child) => {
     let age = null;
-
-    // If DOB is provided → calculate age
+  
     if (child.dob) {
       const birthDate = new Date(child.dob);
       const today = new Date();
@@ -91,18 +90,19 @@ const register = async (req, res) => {
         age--;
       }
     }
-
-    // If age is manually provided → use it (but cap at 18 for safety)
+  
     if (child.age !== undefined) {
       age = Math.min(18, Math.max(0, Number(child.age)));
     }
-
+  
     return {
+      childId: `child_${new mongoose.Types.ObjectId()}`, // ← ALWAYS SET THIS
       name: child.name?.trim() || "My Child",
       age: age,
       dob: child.dob || null,
       healthNotes: child.healthNotes?.trim() || "",
       avatarUrl: child.avatarUrl || "/avatars/child-default.png",
+      createdAt: new Date(),
     };
   });
 

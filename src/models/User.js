@@ -98,7 +98,7 @@ const userSchema = new mongoose.Schema(
 userSchema.index({ email: 1 });
 userSchema.index({ phone: 1 }, { sparse: true });
 userSchema.index({ resetPasswordToken: 1 });
-userSchema.index({ "childProfiles.childId": 1 }); // for fast lookup
+userSchema.index({ "childProfiles.childId": 1 }, { unique: false, sparse: true });
 userSchema.index({ activeProfileId: 1 });
 
 // ── VIRTUAL: Full Name ───────────────────────────
