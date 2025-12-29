@@ -7,7 +7,6 @@ const childProfileSchema = new mongoose.Schema(
       type: String,
       required: true,
       default: () => `child_${new mongoose.Types.ObjectId()}`, // e.g. child_671f3a9b8c1d2e3f4a5b6c7d
-      unique: true,
     },
     name: { type: String, required: true, trim: true },
     age: { type: Number, min: 0 },
