@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 
 // Ensure upload directories exist
-['uploads/badges', 'uploads/achievements'].forEach(dir => {
+['uploads/badges', 'uploads/achievements', 'uploads/pain-locations'].forEach(dir => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -12,8 +12,12 @@ const fs = require('fs');
 
 const iconStorage = multer.diskStorage({
   destination: (req, file, cb) => {
+    let folder = 'uploads/achievements';
     const type = req.body.type || req.params.type;
-    const folder = type === 'badge' ? 'uploads/badges' : 'uploads/achievements';
+    
+    if (type === 'badge') folder = 'uploads/badges';
+    else if (type === 'pain-location') folder = 'uploads/pain-locations';
+    
     cb(null, folder);
   },
   filename: (req, file, cb) => {

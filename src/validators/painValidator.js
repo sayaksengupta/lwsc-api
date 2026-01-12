@@ -2,7 +2,9 @@ const Joi = require('joi');
 
 const createSchema = Joi.object({
   date: Joi.date().iso().required(),
-  location: Joi.string().trim().required(),
+  location: Joi.string().regex(/^[0-9a-fA-F]{24}$/).required().messages({
+    'string.pattern.base': 'Invalid location ID format'
+  }),
   moodEmoji: Joi.string().allow(null, ''),
   painType: Joi.string().trim().required(),
   intensity: Joi.number().min(0).max(10).required(),
@@ -11,7 +13,9 @@ const createSchema = Joi.object({
 
 const updateSchema = Joi.object({
   date: Joi.date().iso(),
-  location: Joi.string().trim(),
+  location: Joi.string().regex(/^[0-9a-fA-F]{24}$/).messages({
+    'string.pattern.base': 'Invalid location ID format'
+  }),
   moodEmoji: Joi.string().allow(null, ''),
   painType: Joi.string().trim(),
   intensity: Joi.number().min(0).max(10),
@@ -21,7 +25,9 @@ const updateSchema = Joi.object({
 const listQuerySchema = Joi.object({
   from: Joi.date().iso(),
   to: Joi.date().iso(),
-  location: Joi.string().trim(),
+  location: Joi.string().regex(/^[0-9a-fA-F]{24}$/).messages({
+    'string.pattern.base': 'Invalid location ID format'
+  }),
   type: Joi.string().trim(),
   page: Joi.number().integer().min(1).default(1),
   pageSize: Joi.number().integer().min(1).max(100).default(50)

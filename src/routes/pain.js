@@ -16,6 +16,7 @@ const {
   remove,
   stats,
 } = require("../controllers/painController");
+const painLocationController = require("../controllers/painLocationController");
 
 // ────────────────── MIDDLEWARE ORDER IS CRUCIAL ──────────────────
 // 1. auth               → sets req.user (parent)
@@ -42,5 +43,8 @@ router.delete("/logs/:id", remove);
 
 // GET /pain/stats
 router.get("/stats", validate(statsQuerySchema, "query"), stats);
+
+// GET /pain/locations (Public/User)
+router.get("/locations", painLocationController.list);
 
 module.exports = router;

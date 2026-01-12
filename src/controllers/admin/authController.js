@@ -111,6 +111,44 @@ const changePassword = async (req, res) => {
   res.json({ success: true, message: 'Password changed successfully' });
 };
 
+// ── UPDATE PROFILE ──────────────────────────────────────────────────
+const updateProfile = async (req, res) => {
+  const { name, email, password } = req.body;
+
+  try {
+    const admin = await Admin.findById(req.admin._id);
+    if (!admin) return res.status(404).json({ error: 'Admin not found' });
+
+    if (name) admin.name = name;
+    if (email) admin.email = email.toLowerCase().trim();
+    if (password) {
+        if (password.length < 6) {
+             return res.status(400).json({ error: { code: 'WEAK_PASSWORD', message: 'Password must be at least 6 characters' } });
+        }
+        admin.password = password;
+    }
+
+    await admin.save();
+    
+    // Return updated info
+    res.json({
+        success: true,
+        admin: {
+            id: admin._id,
+            name: admin.name,
+            email: admin.email,
+            role: admin.role
+        }
+    });
+  } catch (err) {
+      // Handle unique email error
+      if (err.code === 11000) {
+          return res.status(400).json({ error: { code: 'EMAIL_EXISTS', message: 'Email already currently in use' }});
+      }
+      res.status(500).json({ error: err.message });
+  }
+};
+
 // ── LOGOUT (client-side only) ───────────────────────────────────────
 const logout = (req, res) => {
   // If you add token blacklist later, revoke here
@@ -181,4 +219,5 @@ module.exports = {
   logout,
   forgotPassword,
   resetPassword,
+  updateProfile,
 };

@@ -17,26 +17,38 @@ const list = async (req, res) => {
     if (from) filter.date.$gte = new Date(from);
     if (to) filter.date.$lte = new Date(to);
   }
-  if (location) filter.location = new RegExp(location, "i");
+  if (location) filter.location = location;
   if (type) filter.painType = new RegExp(type, "i");
 
   const [data, total] = await Promise.all([
-    PainLog.find(filter).sort({ date: -1 }).skip(skip).limit(limit).lean(),
+    PainLog.find(filter)
+      .sort({ date: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate("location", "name")
+      .lean(),
     PainLog.countDocuments(filter),
   ]);
 
   res.json({
-    data,
+    data: data.map((log) => ({
+      ...log,
+      location: log.location?.name || "Unknown",
+      locationLogo: log.location?.logo || null,
+    })),
     meta: { page: parseInt(page || 1), pageSize: limit, total },
   });
 };
 
 const create = async (req, res) => {
-  const log = await PainLog.create({
+  let log = await PainLog.create({
     ...req.body,
     userId: req.activeUserId,
     loggedByParent: req.user._id,
   });
+
+  // Populate location for the response
+  log = await log.populate("location", "name");
 
   // Award coins → returns { alreadyAwarded: bool, coins: number }
   const coinResult = await awardLogCoins(req.activeUserId, "pain");
@@ -59,7 +71,11 @@ const create = async (req, res) => {
   }
 
   res.status(201).json({
-    log,
+    log: {
+      ...log.toObject(),
+      location: log.location?.name || "Unknown",
+      locationLogo: log.location?.logo || null,
+    },
     achievements: newAchievements,
     coinsEarned,
     alreadyHadCoinsToday,
@@ -74,7 +90,7 @@ const update = async (req, res) => {
     { _id: id, userId: req.activeUserId }, // ← Only own or child's log
     req.body,
     { new: true, runValidators: true }
-  );
+  ).populate("location", "name");
 
   if (!log) {
     return res.status(404).json({
@@ -85,7 +101,11 @@ const update = async (req, res) => {
     });
   }
 
-  res.json(log);
+  res.json({
+    ...log.toObject(),
+    location: log.location?.name || "Unknown",
+    locationLogo: log.location?.logo || null,
+  });
 };
 
 const remove = async (req, res) => {
@@ -116,7 +136,7 @@ const stats = async (req, res) => {
     if (to) dateFilter.date.$lte = new Date(to);
   }
 
-  const logs = await PainLog.find(dateFilter).lean();
+  const logs = await PainLog.find(dateFilter).populate("location", "name").lean();
 
   // By Day (average intensity)
   const byDayMap = logs.reduce((acc, log) => {
@@ -138,7 +158,7 @@ const stats = async (req, res) => {
   // By Location
   const byLocation = Object.entries(
     logs.reduce((acc, log) => {
-      const key = log.location || "Unknown";
+      const key = (log.location && log.location.name) || "Unknown";
       acc[key] = (acc[key] || 0) + 1;
       return acc;
     }, {})

@@ -17,7 +17,11 @@ const painLogSchema = new mongoose.Schema({
   },
 
   date: { type: Date, required: true },
-  location: { type: String, required: true, trim: true },
+  location: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "PainLocation",
+    required: true,
+  },
   moodEmoji: { type: String, default: null },
   painType: { type: String, required: true, trim: true },
   intensity: { type: Number, min: 0, max: 10, required: true },

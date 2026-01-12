@@ -7,7 +7,8 @@ const {
   logout,
   forgotPassword,
   resetPassword,
-  refreshToken
+  refreshToken,
+  updateProfile
 } = require('../../controllers/admin/authController');
 const { adminAuth } = require('../../middleware/adminAuth');
 
@@ -19,6 +20,7 @@ router.post('/refresh-token', refreshToken);
 
 // Protected routes
 router.get('/me', adminAuth, getMe);
+router.put('/me', adminAuth, updateProfile);
 router.post('/change-password', adminAuth, changePassword);
 router.post('/logout', adminAuth, logout);
 

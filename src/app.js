@@ -56,6 +56,10 @@ app.use('/api/v1/medications', medicationRoutes);
 
 app.use('/api/v1/admin/auth', require('./routes/admin/auth'));
 app.use('/api/v1/admin/rewards', require('./routes/admin/rewards'));
+app.use('/api/v1/admin/pain-locations', require('./routes/admin/painLocations'));
+app.use('/api/v1/admin/users', require('./routes/admin/users'));
+app.use('/api/v1/admin/dashboard', require('./routes/admin/dashboard'));
+app.use('/api/v1/admin/logs', require('./routes/admin/logs'));
 
 app.use('/api/v1/profile', require('./routes/profile'));
 
