@@ -165,6 +165,7 @@ const getRecentLogs = async (req, res) => {
       PainLog.find({ userId: activeUserId })
         .sort({ date: -1 })
         .limit(limit)
+        .populate("location", "name")
         .lean(),
       MoodLog.find({ userId: activeUserId })
         .sort({ date: -1 })

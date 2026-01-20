@@ -2,51 +2,106 @@ const Facility = require('../models/Facility');
 const { getPagination } = require('../utils/pagination');
 
 const search = async (req, res) => {
-  const { lat, lng, radius, type, query, page, pageSize } = req.query;
-  const { skip, limit } = getPagination(page, pageSize);
+  try {
+    const { lat, lng, radius, type, query, zipcode, page, pageSize } = req.query;
+    const { skip, limit } = getPagination(page, pageSize);
 
-  const maxDistance = (radius || 10) * 1000; // km to meters
+    const filter = {};
 
-  const geoFilter = {
-    location: {
-      $near: {
-        $geometry: { type: 'Point', coordinates: [parseFloat(lng), parseFloat(lat)] },
-        $maxDistance: maxDistance
-      }
+    // 1. Text Search (if name or address query provided)
+    if (query) {
+      filter.$or = [
+        { name: new RegExp(query, 'i') },
+        { address: new RegExp(query, 'i') },
+        { description: new RegExp(query, 'i') }
+      ];
     }
-  };
 
-  const filters = { ...geoFilter };
-  if (type) filters.type = type;
-  if (query) {
-    filters.$text = { $search: query };
+    // 2. Zipcode Filter
+    if (zipcode) {
+      filter.zipcode = zipcode;
+    }
+
+    // 3. Type Filter
+    if (type) {
+      filter.type = type;
+    }
+
+    // 4. Geospatial Search (if lat/lng provided)
+    if (lat && lng) {
+      const maxDistance = (parseFloat(radius) || 50) * 1000; // Default 50km radius
+      filter.location = {
+        $near: {
+          $geometry: { 
+            type: 'Point', 
+            coordinates: [parseFloat(lng), parseFloat(lat)] 
+          },
+          $maxDistance: maxDistance
+        }
+      };
+    }
+
+    const [data, total] = await Promise.all([
+      Facility.find(filter)
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Facility.countDocuments(filter)
+    ]);
+
+    // Enhance response with distance if lat/lng was provided
+    let results = data;
+    if (lat && lng) {
+      results = data.map(facility => {
+        const [fLng, fLat] = facility.location.coordinates;
+        const dist = calculateDistance(parseFloat(lat), parseFloat(lng), fLat, fLng);
+        return { ...facility, distance: Number(dist.toFixed(2)) };
+      });
+    }
+
+    res.json({
+      data: results,
+      meta: { 
+        page: parseInt(page || 1), 
+        pageSize: limit, 
+        total,
+        params: { lat, lng, radius, type, query, zipcode }
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
-
-  const [data, total] = await Promise.all([
-    Facility.find(filters)
-      .skip(skip)
-      .limit(limit)
-      .lean(),
-    Facility.countDocuments(filters)
-  ]);
-
-  // Add distance to each result
-  const results = data.map(facility => {
-    const [facilityLng, facilityLat] = facility.location.coordinates;
-    const distance = calculateDistance(lat, lng, facilityLat, facilityLng);
-    return {
-      ...facility,
-      distance: Number(distance.toFixed(2)) // km
-    };
-  });
-
-  res.json({
-    data: results,
-    meta: { page: parseInt(page), pageSize: limit, total, radius: parseFloat(radius) }
-  });
 };
 
-// Haversine formula
+const create = async (req, res) => {
+  try {
+    const {
+      name, description, type, address, state, country, 
+      zipcode, mobile, email, website, coordinates 
+    } = req.body;
+
+    // Suggested facilities are unverified by default
+    const facility = await Facility.create({
+      name, description, type, address, state, country,
+      zipcode, mobile, email, website,
+      location: {
+        type: 'Point',
+        coordinates: coordinates // [lng, lat]
+      },
+      isVerified: false 
+    });
+
+    res.status(201).json({
+      success: true,
+      data: facility,
+      message: "Facility submitted successfully. It will be visible after verification."
+    });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+// Haversine formula for distance calculation in KM
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
   const R = 6371; // km
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -59,4 +114,4 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
   return R * c;
 };
 
-module.exports = { search };
+module.exports = { search, create };

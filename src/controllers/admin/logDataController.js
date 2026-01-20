@@ -32,7 +32,7 @@ const getUserName = (row) => {
   if (!parent || !parent._id) return userId; 
   if (parent._id.toString() === userId) return `${parent.firstName} ${parent.lastName}`;
   
-  if (parent.childProfiles && userId.startsWith("child_")) {
+  if (parent.childProfiles && String(userId).startsWith("child_")) {
     const child = parent.childProfiles.find(c => c.childId === userId);
     if (child) return `${child.name} (Child)`;
   }
@@ -50,9 +50,14 @@ const listData = async (req, Model, populate = []) => {
   if (userId) filter.userId = userId;
 
   if (from || to) {
-    filter.date = {};
-    if (from) filter.date.$gte = new Date(from);
-    if (to) filter.date.$lte = new Date(to);
+    const fromDate = from ? new Date(from) : null;
+    const toDate = to ? new Date(to) : null;
+
+    if (!((from && isNaN(fromDate.getTime())) || (to && isNaN(toDate.getTime())))) {
+      filter.date = {};
+      if (fromDate) filter.date.$gte = fromDate;
+      if (toDate) filter.date.$lte = toDate;
+    }
   }
 
   let query = Model.find(filter)
@@ -66,7 +71,7 @@ const listData = async (req, Model, populate = []) => {
 
   const [data, total] = await Promise.all([query.lean(), Model.countDocuments(filter)]);
 
-  return { data, total, page: parseInt(page || 1), pageSize: limit };
+  return { data, total, page: parseInt(page) || 1, pageSize: limit };
 };
 
 // ── SPECIFIC CONTROLLERS ─────────────────────────────────────────────────
@@ -104,10 +109,15 @@ const exportPainLogs = async (req, res) => {
     const { userId, from, to } = req.query;
     const filter = {};
     if (userId) filter.userId = userId;
+    
     if (from || to) {
-      filter.date = {};
-      if (from) filter.date.$gte = new Date(from);
-      if (to) filter.date.$lte = new Date(to);
+      const fromDate = from ? new Date(from) : null;
+      const toDate = to ? new Date(to) : null;
+      if (!((from && isNaN(fromDate.getTime())) || (to && isNaN(toDate.getTime())))) {
+        filter.date = {};
+        if (fromDate) filter.date.$gte = fromDate;
+        if (toDate) filter.date.$lte = toDate;
+      }
     }
 
     const data = await PainLog.find(filter)
@@ -149,11 +159,17 @@ const exportMoodLogs = async (req, res) => {
     const { userId, from, to } = req.query;
     const filter = {};
     if (userId) filter.userId = userId;
+    
     if (from || to) {
-      filter.date = {};
-      if (from) filter.date.$gte = new Date(from);
-      if (to) filter.date.$lte = new Date(to);
+      const fromDate = from ? new Date(from) : null;
+      const toDate = to ? new Date(to) : null;
+      if (!((from && isNaN(fromDate.getTime())) || (to && isNaN(toDate.getTime())))) {
+        filter.date = {};
+        if (fromDate) filter.date.$gte = fromDate;
+        if (toDate) filter.date.$lte = toDate;
+      }
     }
+
     const data = await MoodLog.find(filter)
       .sort({ date: -1 })
       .populate("loggedByParent")
@@ -190,10 +206,15 @@ const exportHydrationLogs = async (req, res) => {
     const { userId, from, to } = req.query;
     const filter = {};
     if (userId) filter.userId = userId;
+    
     if (from || to) {
-      filter.date = {};
-      if (from) filter.date.$gte = new Date(from);
-      if (to) filter.date.$lte = new Date(to);
+      const fromDate = from ? new Date(from) : null;
+      const toDate = to ? new Date(to) : null;
+      if (!((from && isNaN(fromDate.getTime())) || (to && isNaN(toDate.getTime())))) {
+        filter.date = {};
+        if (fromDate) filter.date.$gte = fromDate;
+        if (toDate) filter.date.$lte = toDate;
+      }
     }
     
     const data = await HydrationLog.find(filter)
@@ -218,9 +239,13 @@ const listMedicationLogs = async (req, res) => {
     if (userId) filter.userId = userId;
 
     if (from || to) {
-      filter.dateTime = {};
-      if (from) filter.dateTime.$gte = new Date(from);
-      if (to) filter.dateTime.$lte = new Date(to);
+      const fromDate = from ? new Date(from) : null;
+      const toDate = to ? new Date(to) : null;
+      if (!((from && isNaN(fromDate.getTime())) || (to && isNaN(toDate.getTime())))) {
+        filter.dateTime = {};
+        if (fromDate) filter.dateTime.$gte = fromDate;
+        if (toDate) filter.dateTime.$lte = toDate;
+      }
     }
     
     // MedicationIntake references a Schedule via scheduleId
@@ -240,7 +265,7 @@ const listMedicationLogs = async (req, res) => {
             ...d,
             medicationName: d.scheduleId?.name || "Unknown"
         })), 
-        meta: { page: parseInt(page || 1), pageSize: limit, total } 
+        meta: { page: parseInt(page) || 1, pageSize: limit, total } 
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -259,11 +284,17 @@ const exportMedicationLogs = async (req, res) => {
     const { userId, from, to } = req.query;
     const filter = {};
     if (userId) filter.userId = userId;
+    
     if (from || to) {
-      filter.dateTime = {};
-      if (from) filter.dateTime.$gte = new Date(from);
-      if (to) filter.dateTime.$lte = new Date(to);
+      const fromDate = from ? new Date(from) : null;
+      const toDate = to ? new Date(to) : null;
+      if (!((from && isNaN(fromDate.getTime())) || (to && isNaN(toDate.getTime())))) {
+        filter.dateTime = {};
+        if (fromDate) filter.dateTime.$gte = fromDate;
+        if (toDate) filter.dateTime.$lte = toDate;
+      }
     }
+
     const data = await MedicationIntake.find(filter)
       .sort({ dateTime: -1 })
       .populate("scheduleId")

@@ -7,18 +7,24 @@ const locationSchema = new mongoose.Schema({
 
 const facilitySchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
+  description: { type: String, trim: true },
   type: {
     type: String,
-    enum: ['Hospital', 'Clinic', 'Pharmacy', 'Lab', 'Other'],
+    enum: ['Hospital', 'Clinic', 'Pharmacy', 'Lab', 'Center', 'Other'],
     required: true
   },
   address: { type: String, required: true },
-  phone: { type: String, default: null },
+  state: { type: String, required: true },
+  country: { type: String, required: true },
+  zipcode: { type: String, index: true },
+  mobile: { type: String, default: null },
+  email: { type: String, default: null },
+  website: { type: String, default: null },
   location: { type: locationSchema, required: true, index: '2dsphere' },
   rating: { type: Number, min: 0, max: 5, default: null },
   isVerified: { type: Boolean, default: false }
 }, { timestamps: true });
 
-facilitySchema.index({ name: 'text', address: 'text' });
+facilitySchema.index({ name: 'text', address: 'text', description: 'text' });
 
 module.exports = mongoose.model('Facility', facilitySchema);

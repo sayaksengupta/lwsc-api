@@ -24,7 +24,7 @@ const getDashboardStats = async (req, res) => {
     // Calculate total child profiles
     // This requires aggregation since childProfiles is an array inside User
     const childProfileStats = await User.aggregate([
-      { $project: { numberOfChildren: { $size: "$childProfiles" } } },
+      { $project: { numberOfChildren: { $size: { $ifNull: ["$childProfiles", []] } } } },
       { $group: { _id: null, totalChildren: { $sum: "$numberOfChildren" } } }
     ]);
     const totalChildren = childProfileStats[0]?.totalChildren || 0;
@@ -40,7 +40,11 @@ const getDashboardStats = async (req, res) => {
     // 3. Activity Trends (Dynamic Days)
     const getDailyCount = async (Model, dateField = "createdAt") => {
       return await Model.aggregate([
-        { $match: { [dateField]: { $gte: trendStartDate } } },
+        { 
+          $match: { 
+            [dateField]: { $gte: trendStartDate, $exists: true, $type: "date" } 
+          } 
+        },
         {
           $group: {
             _id: { $dateToString: { format: "%Y-%m-%d", date: `$${dateField}` } },

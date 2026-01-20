@@ -12,7 +12,7 @@ function formatRecentLog(log) {
   };
 
   // ── PAIN LOG ─────────────────────────────────────
-  if (log.location !== undefined && log.intensity !== undefined) {
+  if (log.intensity !== undefined && (log.location || log.painType)) {
     const painTitles = {
       headache: 'Headache',
       chest: 'Chest Pain',
@@ -27,11 +27,21 @@ function formatRecentLog(log) {
     const intensityLabel = intensityLabels[Math.floor(log.intensity / 2)] || 'Moderate';
     const title = painTitles[log.painType] || log.painType || 'Pain';
 
+    // Safe location name
+    let locName = 'Unknown';
+    if (log.location) {
+      if (typeof log.location === 'string') {
+        locName = log.location;
+      } else if (log.location.name) {
+        locName = log.location.name;
+      }
+    }
+
     return {
       ...base,
       type: 'pain',
       title: `${intensityLabel} ${title}`,
-      subtitle: log.location ? log.location.charAt(0).toUpperCase() + log.location.slice(1) : null,
+      subtitle: locName.charAt(0).toUpperCase() + locName.slice(1),
       emoji: 'red cross',
       intensity: log.intensity,
     };
