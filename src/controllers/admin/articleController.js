@@ -45,8 +45,13 @@ const getArticle = async (req, res) => {
 
 const createArticle = async (req, res) => {
   try {
-    const { title, excerpt, url, imageUrl, source = 'internal', publishedAt } = req.body;
+    const { title, excerpt, url, source = 'internal', publishedAt } = req.body;
     
+    let imageUrl = req.body.imageUrl;
+    if (req.file) {
+      imageUrl = `/${req.file.path.replace(/\\/g, '/')}`;
+    }
+
     // For internal articles, we use the _id as externalId if not provided
     const article = new Article({
       source,
@@ -73,16 +78,21 @@ const createArticle = async (req, res) => {
 
 const updateArticle = async (req, res) => {
   try {
-    const { title, excerpt, url, imageUrl, publishedAt, source } = req.body;
+    const { title, excerpt, url, publishedAt, source } = req.body;
     
     const updateData = {
       title,
       excerpt,
       url,
-      imageUrl,
       publishedAt,
       source
     };
+
+    if (req.file) {
+      updateData.imageUrl = `/${req.file.path.replace(/\\/g, '/')}`;
+    } else if (req.body.imageUrl !== undefined) {
+      updateData.imageUrl = req.body.imageUrl;
+    }
 
     const article = await Article.findByIdAndUpdate(
       req.params.id,
