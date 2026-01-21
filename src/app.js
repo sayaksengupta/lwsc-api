@@ -61,6 +61,7 @@ app.use('/api/v1/admin/users', require('./routes/admin/users'));
 app.use('/api/v1/admin/dashboard', require('./routes/admin/dashboard'));
 app.use('/api/v1/admin/logs', require('./routes/admin/logs'));
 app.use('/api/v1/admin/facilities', require('./routes/admin/facilities'));
+app.use('/api/v1/admin/articles', require('./routes/admin/articles'));
 
 app.use('/api/v1/profile', require('./routes/profile'));
 
