@@ -27,9 +27,13 @@ const search = async (req, res) => {
       filter.type = type;
     }
 
+    let countFilter = { ...filter };
+    
     // 4. Geospatial Search (if lat/lng provided)
     if (lat && lng) {
       const maxDistance = (parseFloat(radius) || 50) * 1000; // Default 50km radius
+      
+      // Filter for finding data (uses $near for sorting)
       filter.location = {
         $near: {
           $geometry: { 
@@ -39,6 +43,19 @@ const search = async (req, res) => {
           $maxDistance: maxDistance
         }
       };
+
+      // Filter for counting (uses $geoWithin as $near is not allowed in count)
+      // Radius in radians = distance in meters / earth radius in meters (approx 6378137)
+      const radiusInRadians = maxDistance / 6378137;
+      
+      countFilter.location = {
+        $geoWithin: {
+          $centerSphere: [ 
+            [parseFloat(lng), parseFloat(lat)], 
+            radiusInRadians 
+          ]
+        }
+      };
     }
 
     const [data, total] = await Promise.all([
@@ -46,7 +63,7 @@ const search = async (req, res) => {
         .skip(skip)
         .limit(limit)
         .lean(),
-      Facility.countDocuments(filter)
+      Facility.countDocuments(countFilter)
     ]);
 
     // Enhance response with distance if lat/lng was provided
