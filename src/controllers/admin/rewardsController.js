@@ -3,6 +3,7 @@ const Achievement = require("../../models/Achievement");
 const Badge = require("../../models/Badge");
 const fs = require("fs");
 const path = require("path");
+const { getRelativePath } = require("../../config/upload");
 
 // ── ACHIEVEMENTS ─────────────────────────────────────
 const createAchievement = async (req, res) => {
@@ -37,7 +38,7 @@ const createAchievement = async (req, res) => {
     });
   }
 
-  const icon = `/${req.file.path.replace(/\\/g, "/")}`;
+  const icon = getRelativePath(req.file.path);
 
   try {
     const achievement = await Achievement.create({
@@ -89,7 +90,7 @@ const updateAchievement = async (req, res) => {
   // Handle icon replacement
   let oldIconPath = null;
   if (req.file) {
-    updateData.icon = `/${req.file.path.replace(/\\/g, "/")}`;
+    updateData.icon = getRelativePath(req.file.path);
     if (req.body.oldIcon) oldIconPath = req.body.oldIcon;
   }
 
@@ -107,13 +108,13 @@ const updateAchievement = async (req, res) => {
 
     // Delete old icon
     if (req.file && oldIconPath) {
-      const fullPath = path.join(
-        __dirname,
-        "..",
-        "..",
-        oldIconPath.replace(/^\//, "")
-      );
-      fs.unlink(fullPath, (err) => {
+      // oldIconPath is e.g. /uploads/badges/file.png
+      // We need to convert it back to absolute path for unlink
+      const { UPLOADS_ROOT } = require("../../config/upload");
+      const projectRoot = path.join(UPLOADS_ROOT, '..');
+      const absoluteOldPath = path.join(projectRoot, oldIconPath);
+      
+      fs.unlink(absoluteOldPath, (err) => {
         if (err && err.code !== "ENOENT")
           console.error("Failed to delete old icon:", err);
       });
@@ -134,7 +135,7 @@ const listAchievements = async (req, res) => {
   res.json(achievements);
 };
 
-// ── BADGES (unchanged, just cleaned) ──────────────────
+// ── BADGES ──────────────────
 const createBadge = async (req, res) => {
   const { title, description, coinCost } = req.body;
 
@@ -143,7 +144,7 @@ const createBadge = async (req, res) => {
   if (!coinCost || isNaN(coinCost) || coinCost < 1)
     return res.status(400).json({ error: { code: "INVALID_COIN_COST" } });
 
-  const icon = `/${req.file.path.replace(/\\/g, "/")}`;
+  const icon = getRelativePath(req.file.path);
 
   try {
     const badge = await Badge.create({
@@ -175,7 +176,7 @@ const updateBadge = async (req, res) => {
   if (description !== undefined)
     updateData.description = description?.trim() || "";
   if (coinCost !== undefined) updateData.coinCost = Number(coinCost);
-  if (req.file) updateData.icon = `/${req.file.path.replace(/\\/g, "/")}`;
+  if (req.file) updateData.icon = getRelativePath(req.file.path);
 
   const badge = await Badge.findByIdAndUpdate(badgeId, updateData, {
     new: true,
@@ -187,13 +188,10 @@ const updateBadge = async (req, res) => {
   }
 
   if (req.file && req.body.oldIcon) {
-    const oldPath = path.join(
-      __dirname,
-      "..",
-      "..",
-      req.body.oldIcon.replace(/^\//, "")
-    );
-    fs.unlink(oldPath, () => {});
+    const { UPLOADS_ROOT } = require("../../config/upload");
+    const projectRoot = path.join(UPLOADS_ROOT, '..');
+    const absoluteOldPath = path.join(projectRoot, req.body.oldIcon);
+    fs.unlink(absoluteOldPath, () => {});
   }
 
   res.json(badge);

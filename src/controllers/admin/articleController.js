@@ -1,5 +1,6 @@
 const Article = require('../../models/Article');
 const { getPagination } = require('../../utils/pagination');
+const { getRelativePath } = require('../../config/upload');
 
 const listArticles = async (req, res) => {
   try {
@@ -49,7 +50,7 @@ const createArticle = async (req, res) => {
     
     let imageUrl = req.body.imageUrl;
     if (req.file) {
-      imageUrl = `/${req.file.path.replace(/\\/g, '/')}`;
+      imageUrl = getRelativePath(req.file.path);
     }
 
     // For internal articles, we use the _id as externalId if not provided
@@ -89,7 +90,7 @@ const updateArticle = async (req, res) => {
     };
 
     if (req.file) {
-      updateData.imageUrl = `/${req.file.path.replace(/\\/g, '/')}`;
+      updateData.imageUrl = getRelativePath(req.file.path);
     } else if (req.body.imageUrl !== undefined) {
       updateData.imageUrl = req.body.imageUrl;
     }

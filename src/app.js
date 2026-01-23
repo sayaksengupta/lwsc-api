@@ -1,3 +1,4 @@
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
@@ -20,8 +21,8 @@ const facilitiesRoutes = require('./routes/facilities');
 const settingsRoutes = require('./routes/settings');
 const homeRoutes = require('./routes/home');
 
-
 const { errorHandler } = require('./middleware/errorHandler');
+const { UPLOADS_ROOT } = require('./config/upload');
 
 const app = express();
 
@@ -29,7 +30,7 @@ const app = express();
 app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
-app.use('/uploads', express.static('uploads'));
+app.use('/uploads', express.static(UPLOADS_ROOT));
 
 // DB
 mongoose.connect(process.env.MONGODB_URI)

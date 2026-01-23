@@ -1,4 +1,5 @@
 const PainLocation = require("../models/PainLocation");
+const { getRelativePath } = require("../config/upload");
 
 // Public/User: List all active pain locations
 const list = async (req, res) => {
@@ -16,7 +17,7 @@ const adminList = async (req, res) => {
 const create = async (req, res) => {
   try {
     const { name, isActive } = req.body;
-    const logo = req.file ? `/uploads/pain-locations/${req.file.filename}` : null;
+    const logo = req.file ? getRelativePath(req.file.path) : null;
     
     const location = await PainLocation.create({ name, isActive, logo });
     res.status(201).json(location);
@@ -36,7 +37,7 @@ const update = async (req, res) => {
     
     const updateData = { name, isActive };
     if (req.file) {
-      updateData.logo = `/uploads/pain-locations/${req.file.filename}`;
+      updateData.logo = getRelativePath(req.file.path);
     }
     
     const location = await PainLocation.findByIdAndUpdate(

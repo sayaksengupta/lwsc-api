@@ -3,23 +3,34 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
+const UPLOADS_ROOT = path.join(__dirname, '../../uploads');
+
 // Ensure upload directories exist
-['uploads/badges', 'uploads/achievements', 'uploads/pain-locations', 'uploads/articles'].forEach(dir => {
+['badges', 'achievements', 'pain-locations', 'articles'].forEach(subDir => {
+  const dir = path.join(UPLOADS_ROOT, subDir);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
 });
 
+const getRelativePath = (absolutePath) => {
+  // Returns path relative to the root category, e.g., "/uploads/badges/file.png"
+  const projectRoot = path.join(UPLOADS_ROOT, '..');
+  const relative = path.relative(projectRoot, absolutePath).replace(/\\/g, '/');
+  return `/${relative}`;
+};
+
 const iconStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    let folder = 'uploads/achievements';
+    let folder = 'achievements';
     const type = req.body.type || req.params.type;
     
-    if (type === 'badge') folder = 'uploads/badges';
-    else if (type === 'pain-location') folder = 'uploads/pain-locations';
-    else if (type === 'article') folder = 'uploads/articles';
+    if (type === 'badge') folder = 'badges';
+    else if (type === 'pain-location') folder = 'pain-locations';
+    else if (type === 'article') folder = 'articles';
     
-    cb(null, folder);
+    const dest = path.join(UPLOADS_ROOT, folder);
+    cb(null, dest);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -41,4 +52,4 @@ const uploadIcon = multer({
   }
 });
 
-module.exports = { uploadIcon };
+module.exports = { uploadIcon, UPLOADS_ROOT, getRelativePath };
