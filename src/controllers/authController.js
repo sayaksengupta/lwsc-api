@@ -285,6 +285,71 @@ const resetPassword = async (req, res) => {
   res.json({ success: true });
 };
 
+const deleteAccount = async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({
+      error: { code: "MISSING_FIELDS", message: "Email and password are required" },
+    });
+  }
+
+  const user = await User.findOne({ email: email.toLowerCase() });
+
+  if (!user || !(await bcrypt.compare(password, user.password))) {
+    return res.status(401).json({
+      error: {
+        code: "INVALID_CREDENTIALS",
+        message: "Invalid email or password",
+      },
+    });
+  }
+
+  try {
+    const userIdsToDelete = [user._id.toString(), ...user.childProfiles.map(c => c.childId)];
+
+    // Models to purge
+    const Bookmark = require("../models/Bookmark");
+    const CoinTransaction = require("../models/CoinTransaction");
+    const Connection = require("../models/Connection");
+    const EmergencyContact = require("../models/EmergencyContact");
+    const HydrationLog = require("../models/HydrationLog");
+    const MedicationIntake = require("../models/MedicationIntake");
+    const MedicationSchedule = require("../models/MedicationSchedule");
+    const MoodLog = require("../models/MoodLog");
+    const PainLog = require("../models/PainLog");
+    const SharedMoodLog = require("../models/SharedMoodLog");
+    const SharedPainLog = require("../models/SharedPainLog");
+    const UserAchievement = require("../models/UserAchievement");
+    const UserBadge = require("../models/UserBadge");
+    const Event = require("../models/Event");
+
+    // Perform deletions
+    await Promise.all([
+      Bookmark.deleteMany({ userId: user._id }),
+      CoinTransaction.deleteMany({ userId: user._id }),
+      Connection.deleteMany({ userId: user._id }),
+      EmergencyContact.deleteMany({ userId: user._id }),
+      HydrationLog.deleteMany({ userId: { $in: userIdsToDelete } }),
+      MedicationIntake.deleteMany({ userId: { $in: userIdsToDelete } }),
+      MedicationSchedule.deleteMany({ userId: { $in: userIdsToDelete } }),
+      MoodLog.deleteMany({ userId: { $in: userIdsToDelete } }),
+      PainLog.deleteMany({ userId: { $in: userIdsToDelete } }),
+      SharedMoodLog.deleteMany({ $or: [{ sharedBy: user._id }, { sharedWith: user._id }] }),
+      SharedPainLog.deleteMany({ $or: [{ sharedBy: user._id }, { sharedWith: user._id }] }),
+      UserAchievement.deleteMany({ userId: user._id }),
+      UserBadge.deleteMany({ userId: user._id }),
+      Event.deleteMany({ userId: { $in: userIdsToDelete } }),
+      User.deleteOne({ _id: user._id })
+    ]);
+
+    res.json({ success: true, message: "Account and associated data deleted successfully" });
+  } catch (error) {
+    console.error("Delete account error:", error);
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Error deleting account" } });
+  }
+};
+
 module.exports = {
   register,
   login,
@@ -293,4 +358,5 @@ module.exports = {
   me,
   forgotPassword,
   resetPassword,
+  deleteAccount
 };

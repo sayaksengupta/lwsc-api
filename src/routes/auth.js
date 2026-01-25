@@ -6,7 +6,8 @@ const {
   logout,
   me,
   forgotPassword,
-  resetPassword
+  resetPassword,
+  deleteAccount
 } = require('../controllers/authController');
 const { auth } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
@@ -24,5 +25,6 @@ router.post('/logout', auth, logout);
 router.get('/me', auth, me);
 router.post('/forgot-password', validate(forgotPasswordSchema), forgotPassword);
 router.post('/reset-password', validate(resetPasswordSchema), resetPassword);
+router.post('/delete-account', deleteAccount);
 
 module.exports = router;
