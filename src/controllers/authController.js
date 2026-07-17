@@ -7,6 +7,7 @@ const {
 } = require("../utils/token");
 const { sendPasswordResetEmail } = require("../utils/email");
 const jwt = require("jsonwebtoken");
+const mongoose = require("mongoose");
 
 const formatUserResponse = (user) => {
   const activeProfile = user.getActiveProfile();
