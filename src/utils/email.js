@@ -39,7 +39,7 @@ const sendPasswordResetEmail = async (email, token, isAdmin = false) => {
 
   try {
     const transporter = nodemailer.createTransport({
-      host: process.env.EMAIL_HOST || 'smtp.cscfkids.org',
+      host: process.env.EMAIL_HOST || 'netsol-smtp-oxcs.hostingplatform.com',
       port: parseInt(process.env.EMAIL_PORT || '587', 10),
       secure: process.env.EMAIL_SECURE === 'true', // true for port 465, false for 587
       auth: {

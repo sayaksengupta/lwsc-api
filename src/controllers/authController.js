@@ -137,7 +137,8 @@ const register = async (req, res) => {
 // LOGIN
 const login = async (req, res) => {
   const { emailOrUsername, password } = req.body;
-  const user = await User.findOne({ email: emailOrUsername.toLowerCase() });
+  if (!emailOrUsername) return res.status(400).json({ error: { message: "Email is required" } });
+  const user = await User.findOne({ email: emailOrUsername.toLowerCase().trim() });
 
   if (!user || !(await bcrypt.compare(password, user.password))) {
     return res.status(401).json({
@@ -248,7 +249,8 @@ const me = async (req, res) => {
 // FORGOT PASSWORD
 const forgotPassword = async (req, res) => {
   const { email } = req.body;
-  const user = await User.findOne({ email });
+  if (!email) return res.status(400).json({ error: { message: "Email required" } });
+  const user = await User.findOne({ email: email.toLowerCase().trim() });
   if (!user) {
     // Don't reveal if email exists
     return res.json({ success: true });
