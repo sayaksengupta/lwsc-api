@@ -195,6 +195,7 @@ const resetPassword = async (req, res) => {
     const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET);
     const admin = await Admin.findOne({
       _id: decoded.id,
+      resetPasswordToken: token,
       resetPasswordExpires: { $gt: Date.now() },
     });
 
