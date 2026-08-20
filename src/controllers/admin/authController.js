@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const Admin = require('../../models/Admin');
+const { sendPasswordResetEmail } = require('../../utils/email');
 
 // ── LOGIN ─────────────────────────────────────────────────────────────
 const login = async (req, res) => {
@@ -177,8 +178,9 @@ const forgotPassword = async (req, res) => {
 
   const resetLink = `${process.env.CLIENT_URL}/admin/reset-password?token=${resetToken}`;
   console.log('Password Reset Link:', resetLink);
+  await sendPasswordResetEmail(admin.email, resetToken, true);
 
-  res.json({ success: true, message: 'Reset link sent (check console)' });
+  res.json({ success: true, message: 'Reset link sent' });
 };
 
 // ── RESET PASSWORD ──────────────────────────────────────────────────
